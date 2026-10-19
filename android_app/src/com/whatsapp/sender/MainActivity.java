@@ -40,7 +40,7 @@ public class MainActivity extends Activity {
 
     private static final String PREFS_NAME = "WhatsAppSenderPrefs";
     private static final String KEY_SERVER_URL = "server_url";
-    private static final String DEFAULT_SERVER_URL = "http://192.168.1.101:3000";
+    private static final String DEFAULT_SERVER_URL = "https://whatsapp-sender-hx4d.onrender.com";
     private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
     private static final int CONTACTS_PERMISSION_CODE = 2002;
 
@@ -77,6 +77,11 @@ public class MainActivity extends Activity {
         requestAppPermissions();
 
         String currentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL);
+        // Automatically migrate to live cloud Render URL if previously pointing to a local IP
+        if (currentUrl.contains("172.") || currentUrl.contains("192.168.") || currentUrl.contains("localhost")) {
+            currentUrl = DEFAULT_SERVER_URL;
+            prefs.edit().putString(KEY_SERVER_URL, currentUrl).apply();
+        }
         etServerUrl.setText(currentUrl);
         loadServerUrl(currentUrl);
     }
