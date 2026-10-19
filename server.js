@@ -10,9 +10,8 @@ import dgram from 'dgram';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
 
-
-import { whatsappService } from './whatsappService.js';
-import { campaignManager } from './campaignManager.js';
+import { sessionManager, whatsappService } from './whatsappService.js';
+import { getCampaignManager, campaignManager } from './campaignManager.js';
 import { contactsDb } from './contactsDb.js';
 import {
   parseCsvContacts,
@@ -61,6 +60,16 @@ app.use(express.urlencoded({ extended: true, limit: '200mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+// Helper: Get device context for session isolation & multi-account handling
+function getDeviceContext(req) {
+  const rawId = req.headers['x-device-id'] || req.query.deviceId || req.body?.deviceId || 'default';
+  const cleanId = String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+  const session = sessionManager.getSession(cleanId);
+  const campaign = getCampaignManager(cleanId, session);
+  const accountKey = session.accountPhone || cleanId;
+  return { deviceId: cleanId, session, campaign, accountKey };
+}
+
 // Helper: Get local Wi-Fi / LAN IP address for phone/mobile connection
 export function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
@@ -75,7 +84,7 @@ export function getLocalIpAddress() {
                       lowerName.includes('wsl') || 
                       lowerName.includes('loopback') || 
                       lowerName.includes('docker') ||
-                      lowerName.includes('ethernet 3'); // VirtualBox
+                      lowerName.includes('ethernet 3');
 
     const isWifi = lowerName.includes('wi-fi') || lowerName.includes('wireless') || lowerName.includes('wlan');
 
@@ -125,9 +134,7 @@ app.get('/api/download-apk', (req, res) => {
 // === UDP Auto-Discovery Service for Android APK ===
 try {
   const udpServer = dgram.createSocket('udp4');
-  udpServer.on('error', (err) => {
-    // Port 3001 in use or unavailable, non-fatal
-  });
+  udpServer.on('error', () => {});
   udpServer.on('message', (msg, rinfo) => {
     const text = msg.toString();
     if (text.includes('DISCOVER_WHATSAPP_SENDER')) {
@@ -143,11 +150,10 @@ try {
   // Ignored
 }
 
-
-
-// === WhatsApp Status & Actions ===
+// === WhatsApp Status & Actions (Per Device) ===
 app.get('/api/whatsapp/status', (req, res) => {
-  res.json(whatsappService.getStatus());
+  const { session } = getDeviceContext(req);
+  res.json(session.getStatus());
 });
 
 app.post('/api/whatsapp/pairing-code', async (req, res) => {
@@ -156,7 +162,8 @@ app.post('/api/whatsapp/pairing-code', async (req, res) => {
     if (!phone) {
       return res.status(400).json({ success: false, error: 'Phone number is required' });
     }
-    const result = await whatsappService.requestPairingCode(phone);
+    const { session } = getDeviceContext(req);
+    const result = await session.requestPairingCode(phone);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -165,7 +172,8 @@ app.post('/api/whatsapp/pairing-code', async (req, res) => {
 
 app.post('/api/whatsapp/logout', async (req, res) => {
   try {
-    await whatsappService.logout();
+    const { deviceId } = getDeviceContext(req);
+    await sessionManager.logoutSession(deviceId);
     res.json({ success: true, message: 'Logged out successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -174,7 +182,8 @@ app.post('/api/whatsapp/logout', async (req, res) => {
 
 app.post('/api/whatsapp/restart', async (req, res) => {
   try {
-    await whatsappService.logout();
+    const { session } = getDeviceContext(req);
+    await session.logout();
     res.json({ success: true, message: 'Session reset. Generating fresh QR code...' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -183,14 +192,15 @@ app.post('/api/whatsapp/restart', async (req, res) => {
 
 app.post('/api/whatsapp/cleanup-auth', async (req, res) => {
   try {
-    await whatsappService.cleanupAuthFiles();
+    const { session } = getDeviceContext(req);
+    await session.cleanupAuthFiles();
     res.json({ success: true, message: 'Unnecessary auth files cleaned successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// === Contact Parsing Endpoints ===
+// === Contact Parsing Endpoints (Per Device / Account) ===
 app.post('/api/upload-contacts', (req, res) => {
   upload.single('contactsFile')(req, res, (err) => {
     if (err) {
@@ -219,15 +229,17 @@ app.post('/api/upload-contacts', (req, res) => {
 
       fs.unlink(filePath, () => {});
 
-      // Persist permanently into local database
-      const dbResult = contactsDb.upsertContacts(contacts);
+      const { accountKey, deviceId } = getDeviceContext(req);
+      const dbResult = contactsDb.upsertContacts(contacts, accountKey);
+      io.to(`device_${deviceId}`).emit('contacts:updated');
 
       res.json({
         success: true,
         filename: req.file.originalname,
         count: contacts.length,
         contacts,
-        dbTotal: dbResult.total
+        dbTotal: dbResult.total,
+        account: accountKey
       });
     } catch (parseErr) {
       console.error('Contact parse error:', parseErr);
@@ -243,13 +255,16 @@ app.post('/api/parse-text', (req, res) => {
       return res.json({ success: true, contacts: [], count: 0 });
     }
     const contacts = parseRawTextContacts(text, defaultCountryCode);
-    const dbResult = contactsDb.upsertContacts(contacts);
+    const { accountKey, deviceId } = getDeviceContext(req);
+    const dbResult = contactsDb.upsertContacts(contacts, accountKey);
+    io.to(`device_${deviceId}`).emit('contacts:updated');
 
     res.json({
       success: true,
       count: contacts.length,
       contacts,
-      dbTotal: dbResult.total
+      dbTotal: dbResult.total,
+      account: accountKey
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -259,11 +274,12 @@ app.post('/api/parse-text', (req, res) => {
 app.get('/api/contacts', (req, res) => {
   try {
     const search = req.query.search || '';
-    const contacts = contactsDb.getAll(search);
+    const { accountKey } = getDeviceContext(req);
+    const contacts = contactsDb.getAll(search, accountKey);
     res.json({
       success: true,
       count: contacts.length,
-      account: contactsDb.getActiveAccount(),
+      account: accountKey,
       contacts
     });
   } catch (err) {
@@ -277,7 +293,9 @@ app.post('/api/contacts/save', (req, res) => {
     if (!Array.isArray(contacts)) {
       return res.status(400).json({ error: 'Contacts array required' });
     }
-    const result = contactsDb.upsertContacts(contacts);
+    const { accountKey, deviceId } = getDeviceContext(req);
+    const result = contactsDb.upsertContacts(contacts, accountKey);
+    io.to(`device_${deviceId}`).emit('contacts:updated');
     res.json({
       success: true,
       ...result
@@ -287,7 +305,7 @@ app.post('/api/contacts/save', (req, res) => {
   }
 });
 
-// === Endpoint: Direct Import of Android Phone Contacts ===
+// Direct Import of Android Phone Contacts
 app.post('/api/contacts/import-device', (req, res) => {
   try {
     const { contacts, defaultCountryCode } = req.body;
@@ -313,8 +331,9 @@ app.post('/api/contacts/import-device', (req, res) => {
       }
     }
 
-    const result = contactsDb.upsertContacts(parsedContacts);
-    io.emit('contacts:updated');
+    const { accountKey, deviceId } = getDeviceContext(req);
+    const result = contactsDb.upsertContacts(parsedContacts, accountKey);
+    io.to(`device_${deviceId}`).emit('contacts:updated');
     res.json({
       success: true,
       count: parsedContacts.length,
@@ -326,17 +345,18 @@ app.post('/api/contacts/import-device', (req, res) => {
   }
 });
 
-
 app.put('/api/contacts/:id', (req, res) => {
   try {
     const { name, phone } = req.body;
     if (!name && !phone) {
       return res.status(400).json({ error: 'Name or phone is required to update' });
     }
-    const updated = contactsDb.updateContact(req.params.id, { name, phone });
+    const { accountKey, deviceId } = getDeviceContext(req);
+    const updated = contactsDb.updateContact(req.params.id, { name, phone }, accountKey);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Contact not found' });
     }
+    io.to(`device_${deviceId}`).emit('contacts:updated');
     res.json({ success: true, contact: updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -345,7 +365,9 @@ app.put('/api/contacts/:id', (req, res) => {
 
 app.delete('/api/contacts/:id', (req, res) => {
   try {
-    const ok = contactsDb.deleteById(req.params.id);
+    const { accountKey, deviceId } = getDeviceContext(req);
+    const ok = contactsDb.deleteById(req.params.id, accountKey);
+    io.to(`device_${deviceId}`).emit('contacts:updated');
     res.json({ success: ok });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -354,14 +376,16 @@ app.delete('/api/contacts/:id', (req, res) => {
 
 app.delete('/api/contacts', (req, res) => {
   try {
-    contactsDb.clear();
+    const { accountKey, deviceId } = getDeviceContext(req);
+    contactsDb.clear(accountKey);
+    io.to(`device_${deviceId}`).emit('contacts:updated');
     res.json({ success: true, message: 'Contacts database cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// === Multi-Media Upload Endpoint (Images & Videos) ===
+// === Multi-Media Upload Endpoint ===
 app.post('/api/upload-media', (req, res) => {
   upload.array('mediaFiles', 50)(req, res, (err) => {
     if (err) {
@@ -387,7 +411,6 @@ app.post('/api/upload-media', (req, res) => {
       };
     });
 
-    console.log(`Uploaded ${uploaded.length} media file(s)`);
     res.json({
       success: true,
       count: uploaded.length,
@@ -407,8 +430,6 @@ app.post('/api/upload-video', (req, res) => {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No video file provided' });
     }
-
-    console.log(`Video uploaded successfully: "${req.file.originalname}" (${(req.file.size / (1024 * 1024)).toFixed(1)} MB)`);
 
     const isImage = req.file.mimetype.startsWith('image/');
     res.json({
@@ -438,13 +459,14 @@ app.post('/api/test-message', async (req, res) => {
       return res.status(400).json({ error: 'Invalid phone number format' });
     }
 
-    const check = await whatsappService.checkNumber(formatted.digits);
+    const { session, campaign } = getDeviceContext(req);
+    const check = await session.checkNumber(formatted.digits);
     if (!check.exists) {
       return res.status(400).json({ error: `Phone number ${formatted.formatted} is not registered on WhatsApp` });
     }
 
     const contactObj = { name, firstName: name.split(' ')[0], phone: formatted.formatted };
-    const personalizedText = campaignManager.replaceVariables(message, contactObj);
+    const personalizedText = campaign.replaceVariables(message, contactObj);
 
     // Resolve local paths for mediaFiles
     const resolvedMedia = [];
@@ -460,7 +482,6 @@ app.post('/api/test-message', async (req, res) => {
       }
     }
 
-    // Check single video fallback
     if (resolvedMedia.length === 0 && videoFilename) {
       const vPath = path.join(UPLOADS_DIR, videoFilename);
       if (fs.existsSync(vPath)) {
@@ -474,9 +495,9 @@ app.post('/api/test-message', async (req, res) => {
     }
 
     if (resolvedMedia.length > 0) {
-      await whatsappService.sendMediaBundle(check.jid, resolvedMedia, personalizedText);
+      await session.sendMediaBundle(check.jid, resolvedMedia, personalizedText);
     } else if (personalizedText) {
-      await whatsappService.sendTextMessage(check.jid, personalizedText);
+      await session.sendTextMessage(check.jid, personalizedText);
     } else {
       return res.status(400).json({ error: 'Nothing to send (empty message and no media attached)' });
     }
@@ -487,7 +508,7 @@ app.post('/api/test-message', async (req, res) => {
   }
 });
 
-// === Campaign Controls ===
+// === Campaign Controls (Per Device / Account) ===
 app.post('/api/campaign/start', async (req, res) => {
   try {
     const {
@@ -500,8 +521,7 @@ app.post('/api/campaign/start', async (req, res) => {
       minDelay,
       maxDelay
     } = req.body;
-    
-    // Resolve full disk paths for all media files
+
     const resolvedMedia = [];
     if (Array.isArray(mediaFiles)) {
       for (const m of mediaFiles) {
@@ -520,7 +540,10 @@ app.post('/api/campaign/start', async (req, res) => {
       videoPath = path.join(UPLOADS_DIR, videoFilename);
     }
 
-    const result = await campaignManager.startCampaign({
+    const { campaign, deviceId } = getDeviceContext(req);
+    setupCampaignListeners(campaign, deviceId);
+
+    const result = await campaign.startCampaign({
       contacts,
       messageTemplate,
       mediaFiles: resolvedMedia,
@@ -538,22 +561,26 @@ app.post('/api/campaign/start', async (req, res) => {
 });
 
 app.post('/api/campaign/pause', (req, res) => {
-  const ok = campaignManager.pause();
+  const { campaign } = getDeviceContext(req);
+  const ok = campaign.pause();
   res.json({ success: ok });
 });
 
 app.post('/api/campaign/resume', (req, res) => {
-  const ok = campaignManager.resume();
+  const { campaign } = getDeviceContext(req);
+  const ok = campaign.resume();
   res.json({ success: ok });
 });
 
 app.post('/api/campaign/stop', (req, res) => {
-  const ok = campaignManager.stop();
+  const { campaign } = getDeviceContext(req);
+  const ok = campaign.stop();
   res.json({ success: ok });
 });
 
 app.get('/api/campaign/status', (req, res) => {
-  res.json(campaignManager.getStatus());
+  const { campaign } = getDeviceContext(req);
+  res.json(campaign.getStatus());
 });
 
 app.post('/api/clear-uploads', async (req, res) => {
@@ -568,48 +595,75 @@ app.post('/api/clear-uploads', async (req, res) => {
   }
 });
 
-// === Socket.IO Event Forwarding ===
+// Helper for campaign event listener registration
+function setupCampaignListeners(campaign, deviceId) {
+  if (campaign._hasSocketListeners) return;
+  campaign._hasSocketListeners = true;
+
+  const room = `device_${deviceId}`;
+  campaign.on('started', (data) => io.to(room).emit('campaign:started', data));
+  campaign.on('progress', (data) => io.to(room).emit('campaign:progress', data));
+  campaign.on('log', (data) => io.to(room).emit('campaign:log', data));
+  campaign.on('finished', (data) => io.to(room).emit('campaign:finished', data));
+  campaign.on('media_cleaned', () => io.to(room).emit('campaign:media_cleaned'));
+  campaign.on('paused', () => io.to(room).emit('campaign:paused'));
+  campaign.on('resumed', () => io.to(room).emit('campaign:resumed'));
+  campaign.on('stopped', () => io.to(room).emit('campaign:stopped'));
+  campaign.on('contact:unregistered_removed', (data) => {
+    io.to(room).emit('contacts:updated');
+    io.to(room).emit('campaign:contact_removed', data);
+  });
+}
+
+// === Socket.IO Room-Based Device Isolation ===
 io.on('connection', (socket) => {
-  // Send current states immediately
-  socket.emit('whatsapp:status', whatsappService.getStatus());
-  socket.emit('campaign:status', campaignManager.getStatus());
+  socket.on('client:init', ({ deviceId }) => {
+    const rawId = deviceId || 'default';
+    const cleanId = String(rawId).replace(/[^a-zA-Z0-9_-]/g, '_') || 'default';
+    socket.deviceId = cleanId;
+    socket.join(`device_${cleanId}`);
+
+    const session = sessionManager.getSession(cleanId);
+    const campaign = getCampaignManager(cleanId, session);
+    setupCampaignListeners(campaign, cleanId);
+
+    // Send immediate initial states for this device only
+    socket.emit('whatsapp:status', session.getStatus());
+    socket.emit('campaign:status', campaign.getStatus());
+  });
+
+  // Fallback for default connections
+  const defaultSession = sessionManager.getSession('default');
+  const defaultCampaign = getCampaignManager('default', defaultSession);
+  setupCampaignListeners(defaultCampaign, 'default');
+  socket.emit('whatsapp:status', defaultSession.getStatus());
+  socket.emit('campaign:status', defaultCampaign.getStatus());
 });
 
-// WhatsApp events
-whatsappService.on('status', (data) => {
-  io.emit('whatsapp:status', whatsappService.getStatus());
-  io.emit('contacts:updated');
+// SessionManager events routed per-device
+sessionManager.on('session:status', (data) => {
+  const room = `device_${data.sessionId}`;
+  io.to(room).emit('whatsapp:status', data);
+  io.to(room).emit('contacts:updated');
 });
 
-whatsappService.on('qr', (data) => {
-  io.emit('whatsapp:qr', data);
+sessionManager.on('session:qr', (data) => {
+  const room = `device_${data.sessionId}`;
+  io.to(room).emit('whatsapp:qr', data);
 });
 
-whatsappService.on('pairing_code', (data) => {
-  io.emit('whatsapp:pairing_code', data);
+sessionManager.on('session:pairing_code', (data) => {
+  const room = `device_${data.sessionId}`;
+  io.to(room).emit('whatsapp:pairing_code', data);
 });
 
-whatsappService.on('connected', (user) => {
-  io.emit('whatsapp:connected', user);
-  io.emit('contacts:updated');
+sessionManager.on('session:connected', (data) => {
+  const room = `device_${data.sessionId}`;
+  io.to(room).emit('whatsapp:connected', data.user);
+  io.to(room).emit('contacts:updated');
 });
 
-// Campaign events
-campaignManager.on('started', (data) => io.emit('campaign:started', data));
-campaignManager.on('progress', (data) => io.emit('campaign:progress', data));
-campaignManager.on('log', (data) => io.emit('campaign:log', data));
-campaignManager.on('finished', (data) => io.emit('campaign:finished', data));
-campaignManager.on('media_cleaned', () => io.emit('campaign:media_cleaned'));
-campaignManager.on('paused', () => io.emit('campaign:paused'));
-campaignManager.on('resumed', () => io.emit('campaign:resumed'));
-campaignManager.on('stopped', () => io.emit('campaign:stopped'));
-campaignManager.on('contact:unregistered_removed', (data) => {
-  io.emit('contacts:updated');
-  io.emit('campaign:contact_removed', data);
-});
-
-
-// Start server listening on all network interfaces (0.0.0.0) for mobile/LAN access
+// Start server listening on all network interfaces
 server.listen(PORT, '0.0.0.0', async () => {
   const localIp = getLocalIpAddress();
   console.log(`=======================================================`);
@@ -617,9 +671,6 @@ server.listen(PORT, '0.0.0.0', async () => {
   console.log(`Local Web App URL:    http://localhost:${PORT}`);
   console.log(`Mobile Phone Web App: http://${localIp}:${PORT}`);
   console.log(`=======================================================`);
-
-  // Initialize WhatsApp connection
-  whatsappService.init();
 
   // If in interactive mode on Windows, open browser automatically
   if (process.platform === 'win32' && !process.env.NO_AUTO_OPEN) {

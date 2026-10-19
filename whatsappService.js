@@ -1,6 +1,5 @@
 import makeWASocket, {
   useMultiFileAuthState,
-  DisconnectReason,
   fetchLatestBaileysVersion,
   prepareWAMessageMedia,
   generateWAMessageFromContent,
@@ -13,44 +12,56 @@ import path from 'path';
 import { EventEmitter } from 'events';
 import { contactsDb } from './contactsDb.js';
 
-const AUTH_FOLDER = path.resolve(process.cwd(), 'auth_info_baileys');
+const SESSIONS_BASE_DIR = path.resolve(process.cwd(), 'auth_info_baileys', 'sessions');
 
-class WhatsAppService extends EventEmitter {
-  constructor() {
+export class WhatsAppSession extends EventEmitter {
+  constructor(sessionId) {
     super();
+    this.sessionId = sessionId;
+    this.authFolder = path.join(SESSIONS_BASE_DIR, sessionId);
     this.sock = null;
     this.status = 'disconnected'; // 'disconnected' | 'connecting' | 'qr_ready' | 'connected'
     this.qrCodeDataUrl = null;
     this.userInfo = null;
+    this.accountPhone = null;
     this.isExplicitLogout = false;
     this.reconnectTimer = null;
     this._isClearingAuth = false;
   }
 
+  hasSavedCredentials() {
+    const credsPath = path.join(this.authFolder, 'creds.json');
+    if (!fs.existsSync(credsPath)) return false;
+    try {
+      const data = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+      return Boolean(data && data.me);
+    } catch {
+      return false;
+    }
+  }
+
   async init() {
     try {
       this.status = 'connecting';
-      this.emit('status', { status: this.status });
+      this.emit('status', { status: this.status, sessionId: this.sessionId });
 
-      if (!fs.existsSync(AUTH_FOLDER)) {
-        fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+      if (!fs.existsSync(this.authFolder)) {
+        fs.mkdirSync(this.authFolder, { recursive: true });
       }
 
       // Check for malformed creds.json
-      const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+      const credsPath = path.join(this.authFolder, 'creds.json');
       if (fs.existsSync(credsPath)) {
         try {
           JSON.parse(fs.readFileSync(credsPath, 'utf8'));
         } catch (parseErr) {
-          console.warn('[Baileys Auth] Malformed creds.json, purging...', parseErr.message);
+          console.warn(`[Baileys Auth ${this.sessionId}] Malformed creds.json, purging...`);
           await this.clearAuthFolder();
-          if (!fs.existsSync(AUTH_FOLDER)) {
-            fs.mkdirSync(AUTH_FOLDER, { recursive: true });
-          }
+          fs.mkdirSync(this.authFolder, { recursive: true });
         }
       }
 
-      const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+      const { state, saveCreds } = await useMultiFileAuthState(this.authFolder);
       const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
 
       const makeSocket = makeWASocket.default || makeWASocket;
@@ -76,290 +87,161 @@ class WhatsAppService extends EventEmitter {
           try {
             this.status = 'qr_ready';
             this.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
-            this.emit('qr', { qrDataUrl: this.qrCodeDataUrl });
-            this.emit('status', { status: this.status });
-          } catch (err) {
-            console.error('Failed to generate QR DataURL:', err);
+            this.emit('qr', { qrDataUrl: this.qrCodeDataUrl, sessionId: this.sessionId });
+            this.emit('status', { status: this.status, qrDataUrl: this.qrCodeDataUrl, sessionId: this.sessionId });
+          } catch (qrErr) {
+            console.error(`[Baileys ${this.sessionId}] QR Generation Error:`, qrErr);
           }
         }
 
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-          const isRestartRequired = statusCode === DisconnectReason.restartRequired;
-          const shouldReconnect = !isLoggedOut && !this.isExplicitLogout;
+          const shouldReconnect = statusCode !== 401 && statusCode !== 403 && !this.isExplicitLogout;
 
-          this.status = 'disconnected';
-          this.qrCodeDataUrl = null;
-          this.userInfo = null;
-          this.emit('status', { status: this.status, reason: statusCode });
+          console.log(`[WhatsApp ${this.sessionId}] connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
 
-          if (shouldReconnect) {
-            const reconnectDelay = isRestartRequired ? 300 : 2000;
-            console.log(`WhatsApp connection closed (${statusCode || 'unknown'}). Reconnecting in ${reconnectDelay}ms...`);
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = setTimeout(() => {
-              this.init();
-            }, reconnectDelay);
-          } else {
-            console.log('WhatsApp logged out or reset. Cleaning session...');
-            contactsDb.switchAccount(null);
-            clearTimeout(this.reconnectTimer);
+          if (statusCode === 401 || statusCode === 403 || this.isExplicitLogout) {
+            this.status = 'disconnected';
+            this.userInfo = null;
+            this.accountPhone = null;
+            this.qrCodeDataUrl = null;
+            this.emit('status', { status: this.status, sessionId: this.sessionId });
             await this.clearAuthFolder();
-
-            // If logged out externally (e.g. from WhatsApp mobile app), restart automatically to generate a fresh QR
-            if (!this.isExplicitLogout) {
-              console.log('Restarting WhatsApp service in 2 seconds to generate a fresh QR code...');
-              this.reconnectTimer = setTimeout(() => {
-                this.init();
-              }, 2000);
-            }
+          } else if (shouldReconnect) {
+            this.status = 'connecting';
+            this.emit('status', { status: this.status, sessionId: this.sessionId });
+            if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = setTimeout(() => this.init(), 2000);
           }
         } else if (connection === 'open') {
           this.status = 'connected';
           this.qrCodeDataUrl = null;
           this.isExplicitLogout = false;
 
-          const rawId = this.sock.user?.id || '';
-          const phone = rawId.split(':')[0] || rawId.split('@')[0];
-          const name = this.sock.user?.name || 'WhatsApp Account';
+          const rawUser = this.sock.user;
+          const cleanPhone = rawUser?.id ? rawUser.id.split(':')[0].split('@')[0] : '';
+          this.accountPhone = cleanPhone;
 
           this.userInfo = {
-            id: rawId,
-            phone,
-            name
+            id: rawUser?.id || '',
+            phone: cleanPhone,
+            name: rawUser?.name || rawUser?.verifiedName || `WhatsApp User (+${cleanPhone})`
           };
 
-          console.log(`WhatsApp connected successfully as +${phone} (${name})`);
-          contactsDb.switchAccount(phone);
-          this.emit('connected', this.userInfo);
-          this.emit('status', { status: this.status, user: this.userInfo });
+          console.log(`[WhatsApp ${this.sessionId}] Connected successfully as +${cleanPhone} (${this.userInfo.name})`);
+
+          // Link any contacts imported prior to login to this connected phone number
+          contactsDb.linkAccount(this.sessionId, cleanPhone);
+
+          this.emit('connected', { user: this.userInfo, sessionId: this.sessionId });
+          this.emit('status', { status: 'connected', user: this.userInfo, accountPhone: this.accountPhone, sessionId: this.sessionId });
         }
       });
+
     } catch (err) {
-      console.error('Error during WhatsApp initialization:', err);
+      console.error(`[Baileys ${this.sessionId}] Init Error:`, err);
       this.status = 'disconnected';
-      this.emit('status', { status: this.status, error: err.message });
+      this.emit('status', { status: this.status, error: err.message, sessionId: this.sessionId });
+    }
+  }
+
+  async requestPairingCode(phoneNumber) {
+    if (!phoneNumber) {
+      throw new Error('Phone number is required');
+    }
+
+    const cleanDigits = String(phoneNumber).replace(/\D/g, '');
+    if (cleanDigits.length < 8) {
+      throw new Error('Invalid phone number format');
+    }
+
+    if (!this.sock || this.status === 'disconnected') {
+      await this.init();
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+
+    if (this.status === 'connected') {
+      throw new Error('Already connected to WhatsApp. Please disconnect first.');
+    }
+
+    try {
+      const code = await this.sock.requestPairingCode(cleanDigits);
+      const formattedCode = code ? code.match(/.{1,4}/g)?.join('-') || code : code;
+      this.emit('pairing_code', { code: formattedCode, phone: cleanDigits, sessionId: this.sessionId });
+      return { success: true, code: formattedCode, phone: cleanDigits };
+    } catch (err) {
+      console.error(`[Baileys ${this.sessionId}] Pairing Code Error:`, err);
+      throw new Error(`Failed to generate pairing code: ${err.message}`);
     }
   }
 
   async clearAuthFolder() {
     if (this._isClearingAuth) return;
     this._isClearingAuth = true;
-
     try {
-      if (!fs.existsSync(AUTH_FOLDER)) {
-        return;
-      }
-
-      // Small delay on Windows to let active file descriptors release
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      let attempts = 0;
-      const maxAttempts = 5;
-
-      while (attempts < maxAttempts) {
+      if (this.sock) {
         try {
-          if (!fs.existsSync(AUTH_FOLDER)) break;
-
-          // Attempt to remove files inside the folder first
-          const entries = await fs.promises.readdir(AUTH_FOLDER);
-          for (const entry of entries) {
-            const entryPath = path.join(AUTH_FOLDER, entry);
-            try {
-              const stat = await fs.promises.stat(entryPath);
-              if (stat.isDirectory()) {
-                await fs.promises.rm(entryPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-              } else {
-                await fs.promises.unlink(entryPath);
-              }
-            } catch (_) {
-              // Individual file might be temporarily locked by Windows OS
-            }
-          }
-
-          // Try removing the auth folder itself
-          await fs.promises.rm(AUTH_FOLDER, { recursive: true, force: true, maxRetries: 3, retryDelay: 300 });
-          break; // successfully cleaned!
-        } catch (err) {
-          attempts++;
-          if (attempts >= maxAttempts) {
-            console.warn(`[Baileys Auth] Session cleared (folder contents removed). Directory lock will release on restart.`);
-          } else {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-        }
+          this.sock.ev.removeAllListeners();
+          this.sock.end(new Error('Logout or Reset'));
+        } catch (_) {}
+        this.sock = null;
       }
-    } catch (err) {
-      console.warn('Warning clearing auth folder:', err.message);
+      if (fs.existsSync(this.authFolder)) {
+        fs.rmSync(this.authFolder, { recursive: true, force: true });
+        console.log(`[Baileys Auth ${this.sessionId}] Cleaned session directory.`);
+      }
+    } catch (e) {
+      console.warn(`[Baileys Auth ${this.sessionId}] Folder clean notice:`, e.message);
     } finally {
       this._isClearingAuth = false;
     }
   }
 
-  /**
-   * Cleans unnecessary JSON files from auth_info_baileys.
-   * Keeps only essential session credentials (creds.json, primary sync keys).
-   * Deletes one-off recipient session files, temporary sync patches, and expired pre-keys.
-   */
-  async cleanupAuthFiles(contactDigits = null) {
-    try {
-      if (!fs.existsSync(AUTH_FOLDER)) return;
-
-      const files = await fs.promises.readdir(AUTH_FOLDER);
-
-      // Check firstUnuploadedPreKeyId to know which pre-keys have been consumed
-      let minPreKeyId = 0;
-      try {
-        const credsPath = path.join(AUTH_FOLDER, 'creds.json');
-        if (fs.existsSync(credsPath)) {
-          const creds = JSON.parse(await fs.promises.readFile(credsPath, 'utf8'));
-          minPreKeyId = creds.firstUnuploadedPreKeyId || 0;
-        }
-      } catch (_) {}
-
-      for (const file of files) {
-        // ALWAYS PRESERVE:
-        if (file === 'creds.json') continue;
-        if (file.startsWith('app-state-sync-key-')) continue;
-        if (file.startsWith('signed-pre-key-')) continue;
-
-        let shouldDelete = false;
-
-        // 1. Delete app state sync history/patch versions
-        if (file.startsWith('app-state-sync-version-')) {
-          shouldDelete = true;
-        }
-
-        // 2. Delete consumed pre-keys older than current index
-        if (file.startsWith('pre-key-')) {
-          const match = file.match(/^pre-key-(\d+)\.json$/);
-          if (match) {
-            const keyId = parseInt(match[1], 10);
-            if (minPreKeyId > 0 && keyId < minPreKeyId - 3) {
-              shouldDelete = true;
-            }
-          }
-        }
-
-        // 3. Delete recipient-specific session/device/identity/lid files after sending
-        if (contactDigits) {
-          const digitsClean = String(contactDigits).replace(/\D/g, '');
-          if (digitsClean && (
-            file.includes(digitsClean) ||
-            (file.startsWith('session-') && file.includes(digitsClean)) ||
-            (file.startsWith('device-list-') && file.includes(digitsClean))
-          )) {
-            shouldDelete = true;
-          }
-        }
-
-        // 4. Delete orphaned lid-mapping or sender-key-memory files
-        if (file.startsWith('sender-key-memory-') || file.startsWith('lid-mapping-')) {
-          shouldDelete = true;
-        }
-
-        if (shouldDelete) {
-          try {
-            await fs.promises.unlink(path.join(AUTH_FOLDER, file));
-          } catch (_) {
-            // momentarily locked by OS
-          }
-        }
-      }
-    } catch (err) {
-      // non-fatal cleanup warning
-    }
-  }
-
   async logout() {
     this.isExplicitLogout = true;
-    clearTimeout(this.reconnectTimer);
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+
     try {
       if (this.sock) {
-        try {
-          await this.sock.logout();
-        } catch (_) {}
-        try {
-          this.sock.end(undefined);
-        } catch (_) {}
+        await this.sock.logout().catch(() => {});
       }
-    } catch (err) {
-      console.warn('Logout warning:', err.message);
+    } finally {
+      await this.clearAuthFolder();
+      this.status = 'disconnected';
+      this.userInfo = null;
+      this.accountPhone = null;
+      this.qrCodeDataUrl = null;
+      this.emit('status', { status: 'disconnected', sessionId: this.sessionId });
     }
-
-    contactsDb.switchAccount(null);
-    this.sock = null;
-    this.status = 'disconnected';
-    this.qrCodeDataUrl = null;
-    this.userInfo = null;
-    this.emit('status', { status: 'disconnected' });
-
-    await this.clearAuthFolder();
-
-    // Restart to generate a fresh QR
-    this.isExplicitLogout = false;
-    await this.init();
   }
 
   getStatus() {
     return {
+      sessionId: this.sessionId,
       status: this.status,
       qrDataUrl: this.qrCodeDataUrl,
       user: this.userInfo,
-      accountPhone: contactsDb.getActiveAccount()
+      accountPhone: this.accountPhone
     };
   }
 
-  /**
-   * Request 8-digit pairing code to connect WhatsApp with a phone number (without camera/QR)
-   */
-  async requestPairingCode(phoneNumber) {
-    if (!this.sock) {
-      throw new Error('WhatsApp service is still starting up. Please wait 2 seconds and try again.');
+  async checkNumber(phoneNumber) {
+    if (!this.sock || this.status !== 'connected') {
+      throw new Error('WhatsApp is not connected on this session');
     }
     const cleanDigits = String(phoneNumber).replace(/\D/g, '');
-    if (!cleanDigits || cleanDigits.length < 8) {
-      throw new Error('Please enter a valid phone number with country code (e.g. 919876543210)');
-    }
-
     try {
-      console.log(`[Baileys Auth] Requesting pairing code for +${cleanDigits}...`);
-      const rawCode = await this.sock.requestPairingCode(cleanDigits);
-      // Format code as ABCD-1234
-      const formattedCode = rawCode?.match(/.{1,4}/g)?.join('-') || rawCode;
-      console.log(`[Baileys Auth] Generated pairing code: ${formattedCode}`);
-      this.emit('pairing_code', { code: formattedCode, phone: cleanDigits });
-      return { success: true, code: formattedCode, phone: cleanDigits };
-    } catch (err) {
-      console.error('[Baileys Auth] Failed to generate pairing code:', err);
-      throw new Error('Failed to generate pairing code: ' + err.message);
-    }
-  }
-
-  /**
-   * Verify whether a number is on WhatsApp
-   */
-  async checkNumber(phoneDigits) {
-    if (!this.sock || this.status !== 'connected') {
-      throw new Error('WhatsApp is not connected');
-    }
-    const jid = `${phoneDigits}@s.whatsapp.net`;
-    try {
-      const results = await this.sock.onWhatsApp(jid);
+      const results = await this.sock.onWhatsApp(`${cleanDigits}@s.whatsapp.net`);
       if (results && results.length > 0 && results[0].exists) {
         return { exists: true, jid: results[0].jid };
       }
-      return { exists: false, jid };
+      return { exists: false, jid: null };
     } catch (err) {
-      // Fallback: assume exists if check throws network error
-      return { exists: true, jid };
+      console.warn(`checkNumber error for ${cleanDigits}:`, err.message);
+      return null;
     }
   }
 
-  /**
-   * Send text message
-   */
   async sendTextMessage(jid, text) {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -369,10 +251,6 @@ class WhatsAppService extends EventEmitter {
     return result;
   }
 
-  /**
-   * Send video message with caption.
-   * Supports HD videos and large files up to 2GB with streaming and document fallback.
-   */
   async sendVideoMessage(jid, videoPath, caption = '', mimetype = 'video/mp4', originalName = '') {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -382,9 +260,6 @@ class WhatsAppService extends EventEmitter {
     }
 
     const fileName = originalName || path.basename(videoPath);
-    console.log(`Sending video to ${jid}: "${fileName}" with caption "${caption.slice(0, 40)}..."`);
-
-    // Try sending as native video message first (using URL stream to avoid large memory allocations)
     try {
       const result = await this.sock.sendMessage(jid, {
         video: { url: videoPath },
@@ -395,8 +270,6 @@ class WhatsAppService extends EventEmitter {
       setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
       return result;
     } catch (videoErr) {
-      console.warn(`Native video send error (${videoErr.message}), falling back to document video...`);
-      // If video exceeds WhatsApp inline media streaming threshold, send as high-quality video document (supports up to 2GB)
       const result = await this.sock.sendMessage(jid, {
         document: { url: videoPath },
         mimetype: mimetype || 'video/mp4',
@@ -408,9 +281,6 @@ class WhatsAppService extends EventEmitter {
     }
   }
 
-  /**
-   * Send image message with caption
-   */
   async sendImageMessage(jid, imagePath, caption = '', mimetype = 'image/jpeg', originalName = '') {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -418,9 +288,6 @@ class WhatsAppService extends EventEmitter {
     if (!fs.existsSync(imagePath)) {
       throw new Error(`Image file not found at ${imagePath}`);
     }
-
-    const fileName = originalName || path.basename(imagePath);
-    console.log(`Sending image to ${jid}: "${fileName}"`);
 
     const result = await this.sock.sendMessage(jid, {
       image: { url: imagePath },
@@ -431,10 +298,6 @@ class WhatsAppService extends EventEmitter {
     return result;
   }
 
-  /**
-   * Pre-uploads media files to WhatsApp server ONCE.
-   * This prevents re-uploading large files to each of the 10,000 customers!
-   */
   async prepareMediaBundle(mediaFiles = []) {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -442,14 +305,7 @@ class WhatsAppService extends EventEmitter {
 
     const preparedList = [];
     for (const media of mediaFiles) {
-      if (!fs.existsSync(media.path)) {
-        console.warn(`File not found: ${media.path}`);
-        continue;
-      }
-
       const isImg = media.type === 'image' || (media.mimetype && media.mimetype.startsWith('image/'));
-      console.log(`[Media Pre-upload] Pre-uploading ${isImg ? 'image' : 'video'} "${media.originalName}" to WhatsApp server ONCE...`);
-
       try {
         if (isImg) {
           const prepared = await prepareWAMessageMedia(
@@ -464,13 +320,19 @@ class WhatsAppService extends EventEmitter {
             path: media.path
           });
         } else {
-          // Check file size: WhatsApp native video stream limit is ~64 MB.
-          // For files > 60MB, WhatsApp requires document upload to avoid upload failure.
-          const stats = fs.statSync(media.path);
-          const fileSizeMB = stats.size / (1024 * 1024);
-
-          if (fileSizeMB > 60) {
-            console.log(`[Media Pre-upload] Video is ${fileSizeMB.toFixed(1)} MB (> 60MB). Pre-uploading as high-capacity document video once...`);
+          try {
+            const prepared = await prepareWAMessageMedia(
+              { video: { url: media.path } },
+              { upload: this.sock.waUploadToServer }
+            );
+            preparedList.push({
+              type: 'video',
+              message: prepared.videoMessage,
+              originalName: media.originalName,
+              mimetype: media.mimetype || 'video/mp4',
+              path: media.path
+            });
+          } catch (vidErr) {
             const prepared = await prepareWAMessageMedia(
               {
                 document: { url: media.path },
@@ -486,41 +348,9 @@ class WhatsAppService extends EventEmitter {
               mimetype: media.mimetype || 'video/mp4',
               path: media.path
             });
-          } else {
-            try {
-              const prepared = await prepareWAMessageMedia(
-                { video: { url: media.path } },
-                { upload: this.sock.waUploadToServer }
-              );
-              preparedList.push({
-                type: 'video',
-                message: prepared.videoMessage,
-                originalName: media.originalName,
-                mimetype: media.mimetype || 'video/mp4',
-                path: media.path
-              });
-            } catch (vidErr) {
-              console.warn(`[Media Pre-upload] Video native upload failed (${vidErr.message}), retrying as document video...`);
-              const prepared = await prepareWAMessageMedia(
-                {
-                  document: { url: media.path },
-                  mimetype: media.mimetype || 'video/mp4',
-                  fileName: media.originalName
-                },
-                { upload: this.sock.waUploadToServer }
-              );
-              preparedList.push({
-                type: 'document',
-                message: prepared.documentMessage,
-                originalName: media.originalName,
-                mimetype: media.mimetype || 'video/mp4',
-                path: media.path
-              });
-            }
           }
         }
       } catch (uploadErr) {
-        console.warn(`[Media Pre-upload] Pre-upload warning for ${media.originalName} (${uploadErr.message}). Using direct streaming fallback.`);
         preparedList.push({
           type: isImg ? 'image' : 'video',
           message: null,
@@ -530,14 +360,9 @@ class WhatsAppService extends EventEmitter {
         });
       }
     }
-
-    console.log(`[Media Pre-upload] Successfully prepared ${preparedList.length} media file(s).`);
     return preparedList;
   }
 
-  /**
-   * Transmits pre-uploaded media bundle to a recipient in ~50ms without re-uploading file!
-   */
   async sendPreloadedMediaBundle(jid, preparedMediaList = [], caption = '') {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -549,24 +374,13 @@ class WhatsAppService extends EventEmitter {
       const isFirst = idx === 0;
       const itemCaption = isFirst ? caption : '';
 
-      // If pre-upload succeeded, relay message using preloaded media token (0 bytes uploaded, takes 50ms!)
       if (media.message) {
         try {
           let messageContent;
           if (media.type === 'image') {
-            messageContent = {
-              imageMessage: {
-                ...media.message,
-                caption: itemCaption || ''
-              }
-            };
+            messageContent = { imageMessage: { ...media.message, caption: itemCaption || '' } };
           } else if (media.type === 'video') {
-            messageContent = {
-              videoMessage: {
-                ...media.message,
-                caption: itemCaption || ''
-              }
-            };
+            messageContent = { videoMessage: { ...media.message, caption: itemCaption || '' } };
           } else {
             messageContent = {
               documentMessage: {
@@ -587,39 +401,28 @@ class WhatsAppService extends EventEmitter {
           await this.sock.relayMessage(jid, generatedMsg.message, {
             messageId: generatedMsg.key.id
           });
-
           results.push(generatedMsg);
         } catch (relayErr) {
-          console.warn(`Relay failed (${relayErr.message}), falling back to direct send...`);
           if (media.type === 'image') {
             const res = await this.sendImageMessage(jid, media.path, itemCaption, media.mimetype, media.originalName);
             results.push(res);
-          } else if (media.type === 'document') {
-            const res = await this.sock.sendMessage(jid, {
-              document: { url: media.path },
-              mimetype: media.mimetype || 'video/mp4',
-              fileName: media.originalName,
-              caption: itemCaption || ''
-            });
-            results.push(res);
           } else {
-            const res = await this.sendVideoMessage(jid, media.path, itemCaption, media.mimetype, media.originalName);
+            const res = await this.sendVideoMessage(jid, media.path, itemCaption, media.mimetype || 'video/mp4', media.originalName);
             results.push(res);
           }
         }
       } else {
-        // Fallback to streaming directly from disk
         if (media.type === 'image') {
           const res = await this.sendImageMessage(jid, media.path, itemCaption, media.mimetype, media.originalName);
           results.push(res);
         } else {
-          const res = await this.sendVideoMessage(jid, media.path, itemCaption, media.mimetype, media.originalName);
+          const res = await this.sendVideoMessage(jid, media.path, itemCaption, media.mimetype || 'video/mp4', media.originalName);
           results.push(res);
         }
       }
 
       if (idx < preparedMediaList.length - 1) {
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 600));
       }
     }
 
@@ -627,10 +430,6 @@ class WhatsAppService extends EventEmitter {
     return results;
   }
 
-  /**
-   * Send a bundle of multiple images and/or videos to a recipient (direct method).
-   * The first media item carries the caption.
-   */
   async sendMediaBundle(jid, mediaFiles = [], caption = '') {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
@@ -659,26 +458,107 @@ class WhatsAppService extends EventEmitter {
     return results;
   }
 
-  /**
-   * Check if a phone number is registered on WhatsApp using Baileys onWhatsApp.
-   * Returns { exists: boolean, jid: string|null } or null on check error.
-   */
-  async checkNumber(phoneNumber) {
-    if (!this.sock || this.status !== 'connected') {
-      throw new Error('WhatsApp is not connected');
-    }
-    const cleanDigits = String(phoneNumber).replace(/\D/g, '');
+  async cleanupAuthFiles(recipientDigits = '') {
+    if (!fs.existsSync(this.authFolder)) return;
     try {
-      const results = await this.sock.onWhatsApp(`${cleanDigits}@s.whatsapp.net`);
-      if (results && results.length > 0 && results[0].exists) {
-        return { exists: true, jid: results[0].jid };
+      const files = await fs.promises.readdir(this.authFolder);
+      const now = Date.now();
+      const MAX_AGE_MS = 2 * 60 * 60 * 1000;
+
+      for (const file of files) {
+        if (file === 'creds.json') continue;
+
+        let shouldDelete = false;
+        if (recipientDigits && file.includes(recipientDigits)) {
+          shouldDelete = true;
+        } else if (file.startsWith('sender-key-') || file.startsWith('tctoken-')) {
+          try {
+            const stats = await fs.promises.stat(path.join(this.authFolder, file));
+            if (now - stats.mtimeMs > MAX_AGE_MS) {
+              shouldDelete = true;
+            }
+          } catch (_) {}
+        }
+
+        if (shouldDelete) {
+          await fs.promises.unlink(path.join(this.authFolder, file)).catch(() => {});
+        }
       }
-      return { exists: false, jid: null };
-    } catch (err) {
-      console.warn(`checkNumber error for ${cleanDigits}:`, err.message);
-      return null;
+    } catch (_) {}
+  }
+}
+
+/**
+ * Session Manager to handle Multiple Instances & Per-Device Logins
+ */
+class SessionManager extends EventEmitter {
+  constructor() {
+    super();
+    this.sessions = new Map();
+    if (!fs.existsSync(SESSIONS_BASE_DIR)) {
+      fs.mkdirSync(SESSIONS_BASE_DIR, { recursive: true });
+    }
+    this.migrateLegacySession();
+  }
+
+  migrateLegacySession() {
+    const legacyFolder = path.resolve(process.cwd(), 'auth_info_baileys');
+    const legacyCreds = path.join(legacyFolder, 'creds.json');
+    const defaultSessionFolder = path.join(SESSIONS_BASE_DIR, 'default');
+
+    if (fs.existsSync(legacyCreds) && !fs.existsSync(defaultSessionFolder)) {
+      try {
+        fs.mkdirSync(defaultSessionFolder, { recursive: true });
+        const files = fs.readdirSync(legacyFolder);
+        for (const file of files) {
+          const src = path.join(legacyFolder, file);
+          if (fs.statSync(src).isFile()) {
+            fs.copyFileSync(src, path.join(defaultSessionFolder, file));
+          }
+        }
+        console.log('[SessionManager] Migrated legacy session into session "default".');
+      } catch (err) {
+        console.warn('[SessionManager] Migration notice:', err.message);
+      }
+    }
+  }
+
+  getSession(deviceId = 'default', autoInit = true) {
+    const cleanId = String(deviceId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    if (this.sessions.has(cleanId)) {
+      return this.sessions.get(cleanId);
+    }
+
+    const session = new WhatsAppSession(cleanId);
+    this.sessions.set(cleanId, session);
+
+    // Forward events
+    session.on('status', (data) => this.emit('session:status', data));
+    session.on('qr', (data) => this.emit('session:qr', data));
+    session.on('pairing_code', (data) => this.emit('session:pairing_code', data));
+    session.on('connected', (data) => this.emit('session:connected', data));
+
+    // Only auto-init if this device already had saved credentials
+    if (autoInit && session.hasSavedCredentials()) {
+      console.log(`[SessionManager] Restoring saved session for device "${cleanId}"...`);
+      session.init();
+    } else {
+      console.log(`[SessionManager] New device "${cleanId}" registered. Waiting for user login.`);
+    }
+
+    return session;
+  }
+
+  async logoutSession(deviceId) {
+    const session = this.sessions.get(deviceId);
+    if (session) {
+      await session.logout();
+      this.sessions.delete(deviceId);
     }
   }
 }
 
-export const whatsappService = new WhatsAppService();
+export const sessionManager = new SessionManager();
+// Backwards compatibility default instance
+export const whatsappService = sessionManager.getSession('default', true);

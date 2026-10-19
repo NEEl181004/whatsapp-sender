@@ -1,16 +1,22 @@
 import { EventEmitter } from 'events';
 import fs from 'fs';
 import path from 'path';
-import { whatsappService } from './whatsappService.js';
+import { sessionManager } from './whatsappService.js';
 import { contactsDb } from './contactsDb.js';
 
-class CampaignManager extends EventEmitter {
-  constructor() {
+export class CampaignManager extends EventEmitter {
+  constructor(sessionId, session = null) {
     super();
+    this.sessionId = sessionId;
+    this.session = session || sessionManager.getSession(sessionId);
     this.isRunning = false;
     this.isPaused = false;
     this.shouldStop = false;
     this.currentCampaign = null;
+  }
+
+  get accountKey() {
+    return this.session?.accountPhone || this.sessionId;
   }
 
   getDelay(minSec = 3, maxSec = 6) {
@@ -33,7 +39,7 @@ class CampaignManager extends EventEmitter {
 
   async startCampaign(options) {
     if (this.isRunning) {
-      throw new Error('A campaign is already running');
+      throw new Error('A campaign is already running on this device');
     }
 
     const {
@@ -80,7 +86,7 @@ class CampaignManager extends EventEmitter {
         if (mediaFiles && mediaFiles.length > 0) {
           this.addLog('info', `⏳ Pre-uploading ${mediaFiles.length} media file(s) to WhatsApp servers ONCE... (avoids re-uploading for every customer)`);
           try {
-            preparedMediaList = await whatsappService.prepareMediaBundle(mediaFiles);
+            preparedMediaList = await this.session.prepareMediaBundle(mediaFiles);
             this.addLog('success', `✔ Media upload complete! Ready for rapid batch delivery to ${contacts.length} recipients.`);
           } catch (prepErr) {
             this.addLog('warn', `Media pre-upload notice: ${prepErr.message}. Will use direct transmission.`);
@@ -116,14 +122,13 @@ class CampaignManager extends EventEmitter {
           this.addLog('info', `Checking & sending to ${contact.name} (${contact.phone})...`);
           
           try {
-            // Determine JID and verify if registered on WhatsApp
             let targetJid = contact.jid || `${contact.digits}@s.whatsapp.net`;
             try {
-              const check = await whatsappService.checkNumber(contact.digits);
+              const check = await this.session.checkNumber(contact.digits);
               if (check !== null) {
                 if (!check.exists) {
                   // Auto-remove unregistered contact from persistent database
-                  contactsDb.deleteByDigits(contact.digits);
+                  contactsDb.deleteByDigits(contact.digits, this.accountKey);
                   this.currentCampaign.failedCount++;
                   this.addLog('warn', `⚠️ ${contact.name} (${contact.phone}) is NOT registered on WhatsApp. Automatically removed from database.`);
                   this.currentCampaign.report.push({
@@ -134,7 +139,7 @@ class CampaignManager extends EventEmitter {
                     time: new Date().toLocaleTimeString()
                   });
                   this.emit('contact:unregistered_removed', { contact, digits: contact.digits });
-                  continue; // Skip message dispatch to this unregistered number
+                  continue;
                 } else if (check.jid) {
                   targetJid = check.jid;
                 }
@@ -147,22 +152,22 @@ class CampaignManager extends EventEmitter {
             const textToSend = this.replaceVariables(messageTemplate, contact);
             const captionToSend = this.replaceVariables(videoCaptionTemplate || messageTemplate, contact);
 
-            // Send using preloaded media token (Lightning fast ~50ms, 0 MB re-upload!)
+            // Send using preloaded media token
             if (preparedMediaList && preparedMediaList.length > 0) {
-              await whatsappService.sendPreloadedMediaBundle(targetJid, preparedMediaList, captionToSend);
+              await this.session.sendPreloadedMediaBundle(targetJid, preparedMediaList, captionToSend);
             } else if (mediaFiles && mediaFiles.length > 0) {
-              await whatsappService.sendMediaBundle(targetJid, mediaFiles, captionToSend);
+              await this.session.sendMediaBundle(targetJid, mediaFiles, captionToSend);
             } else if (videoPath) {
-              await whatsappService.sendVideoMessage(targetJid, videoPath, captionToSend, 'video/mp4', videoOriginalName);
+              await this.session.sendVideoMessage(targetJid, videoPath, captionToSend, 'video/mp4', videoOriginalName);
             } else if (textToSend) {
-              await whatsappService.sendTextMessage(targetJid, textToSend);
+              await this.session.sendTextMessage(targetJid, textToSend);
             }
 
             this.currentCampaign.sentCount++;
-            contactsDb.updateStatus(contact.digits, 'Sent', 'Delivered');
+            contactsDb.updateStatus(contact.digits, 'Sent', 'Delivered', this.accountKey);
 
             // Clean recipient-specific json files from auth folder to prevent disk bloat
-            whatsappService.cleanupAuthFiles(contact.digits).catch(() => {});
+            this.session.cleanupAuthFiles(contact.digits).catch(() => {});
 
             this.addLog('success', `✔ Delivered to ${contact.name} (${contact.phone})`);
             this.currentCampaign.report.push({
@@ -181,11 +186,11 @@ class CampaignManager extends EventEmitter {
                               errMsg.includes('item-not-found');
 
             if (isNotOnWa) {
-              contactsDb.deleteByDigits(contact.digits);
+              contactsDb.deleteByDigits(contact.digits, this.accountKey);
               this.addLog('warn', `⚠️ Removed ${contact.name} (${contact.phone}) from database: Number is not on WhatsApp.`);
               this.emit('contact:unregistered_removed', { contact, digits: contact.digits });
             } else {
-              contactsDb.updateStatus(contact.digits, 'Failed', err.message);
+              contactsDb.updateStatus(contact.digits, 'Failed', err.message, this.accountKey);
             }
 
             this.addLog('error', `✖ Error sending to ${contact.name} (${contact.phone}): ${err.message}`);
@@ -198,7 +203,7 @@ class CampaignManager extends EventEmitter {
             });
           }
 
-          // Anti-ban delay before next contact (except for the last one)
+          // Anti-ban delay before next contact
           if (i < contacts.length - 1 && !this.shouldStop) {
             const delayMs = this.getDelay(minDelay, maxDelay);
             const delaySec = (delayMs / 1000).toFixed(1);
@@ -211,8 +216,7 @@ class CampaignManager extends EventEmitter {
       } finally {
         this.isRunning = false;
         this.isPaused = false;
-        // Purge any remaining temporary auth files
-        whatsappService.cleanupAuthFiles().catch(() => {});
+        this.session.cleanupAuthFiles().catch(() => {});
 
         // Automatically delete uploaded media files from disk once message has been sent to users
         try {
@@ -224,9 +228,9 @@ class CampaignManager extends EventEmitter {
                 try {
                   await fs.promises.unlink(targetPath);
                   cleanedFilesCount++;
-                  console.log(`[Media Cleanup] Deleted ${targetPath} from disk.`);
+                  console.log(`[Media Cleanup ${this.sessionId}] Deleted ${targetPath} from disk.`);
                 } catch (delErr) {
-                  console.warn(`[Media Cleanup] Could not delete ${targetPath}:`, delErr.message);
+                  console.warn(`[Media Cleanup ${this.sessionId}] Could not delete ${targetPath}:`, delErr.message);
                 }
               }
             }
@@ -235,7 +239,7 @@ class CampaignManager extends EventEmitter {
             try {
               await fs.promises.unlink(videoPath);
               cleanedFilesCount++;
-              console.log(`[Media Cleanup] Deleted ${videoPath} from disk.`);
+              console.log(`[Media Cleanup ${this.sessionId}] Deleted ${videoPath} from disk.`);
             } catch (_) {}
           }
           if (cleanedFilesCount > 0) {
@@ -243,7 +247,7 @@ class CampaignManager extends EventEmitter {
             this.emit('media_cleaned');
           }
         } catch (cleanupErr) {
-          console.warn('[Media Cleanup] Error cleaning media files:', cleanupErr.message);
+          console.warn(`[Media Cleanup ${this.sessionId}] Error cleaning media files:`, cleanupErr.message);
         }
 
         this.emit('finished', {
@@ -306,6 +310,7 @@ class CampaignManager extends EventEmitter {
 
   getStatus() {
     return {
+      sessionId: this.sessionId,
       isRunning: this.isRunning,
       isPaused: this.isPaused,
       currentCampaign: this.currentCampaign
@@ -313,4 +318,16 @@ class CampaignManager extends EventEmitter {
   }
 }
 
-export const campaignManager = new CampaignManager();
+const campaignManagers = new Map();
+
+export function getCampaignManager(sessionId = 'default', session = null) {
+  const cleanId = String(sessionId || 'default').replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (!campaignManagers.has(cleanId)) {
+    const s = session || sessionManager.getSession(cleanId);
+    campaignManagers.set(cleanId, new CampaignManager(cleanId, s));
+  }
+  return campaignManagers.get(cleanId);
+}
+
+// Default instance for backwards compatibility
+export const campaignManager = getCampaignManager('default');

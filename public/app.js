@@ -1,6 +1,31 @@
 // WhatsApp Direct Video & Contacts Dispatcher - Client Application Logic
 
+// Persistent Device ID for multi-device & multi-instance isolation
+function getOrCreateDeviceId() {
+  let devId = localStorage.getItem('wa_device_id');
+  if (!devId) {
+    devId = 'dev_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+    localStorage.setItem('wa_device_id', devId);
+  }
+  return devId;
+}
+const deviceId = getOrCreateDeviceId();
+
+// Intercept all native fetch calls to automatically attach X-Device-Id
+const _nativeFetch = window.fetch;
+window.fetch = function (url, options = {}) {
+  const opts = { ...options };
+  opts.headers = new Headers(opts.headers || {});
+  if (!opts.headers.has('X-Device-Id')) {
+    opts.headers.set('X-Device-Id', deviceId);
+  }
+  return _nativeFetch(url, opts);
+};
+
 const socket = io();
+socket.on('connect', () => {
+  socket.emit('client:init', { deviceId });
+});
 
 // Application State
 const state = {
@@ -129,6 +154,14 @@ window.switchTab = function (tabId) {
     }
   });
 
+  document.querySelectorAll('.m-nav-item').forEach((item) => {
+    if (item.dataset.tab === tabId) {
+      item.classList.add('active');
+    } else {
+      item.classList.remove('active');
+    }
+  });
+
   el.panels.forEach((panel) => {
     if (panel.id === `tab-${tabId}`) {
       panel.classList.add('active');
@@ -137,11 +170,16 @@ window.switchTab = function (tabId) {
     }
   });
 
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   updateCampaignSummary();
 };
 
 el.tabs.forEach((tab) => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+});
+
+document.querySelectorAll('.m-nav-item').forEach((item) => {
+  item.addEventListener('click', () => switchTab(item.dataset.tab));
 });
 
 // ================= SOCKET.IO & WHATSAPP STATUS =================
@@ -163,6 +201,15 @@ socket.on('whatsapp:connected', (user) => {
 
 function updateWhatsAppUI(data) {
   state.whatsappStatus = data.status;
+
+  const mNavDot = document.getElementById('mNavConnectDot');
+  if (mNavDot) {
+    if (data.status === 'connected') {
+      mNavDot.classList.add('connected');
+    } else {
+      mNavDot.classList.remove('connected');
+    }
+  }
 
   if (data.status === 'connected') {
     state.user = data.user;
@@ -598,7 +645,36 @@ function mergeContacts(newContacts) {
   updateCampaignSummary();
 }
 
-// Re-render contacts table
+// Prompt-based customer name edit (works on mobile & desktop)
+async function editCustomerNamePrompt(contactId, currentName) {
+  const newName = prompt('Enter updated customer name:', currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) {
+    return;
+  }
+  const cleanName = newName.trim();
+  try {
+    const res = await fetch(`/api/contacts/${contactId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: cleanName })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Failed to update name');
+    }
+    const c = state.contacts.find((x) => x.id === contactId);
+    if (c) {
+      c.name = cleanName;
+      c.firstName = cleanName.split(' ')[0] || 'Friend';
+    }
+    renderContactsTable();
+    addTerminalLog('success', `✔ Updated customer name to "${cleanName}"`);
+  } catch (err) {
+    alert('Failed to save name: ' + err.message);
+  }
+}
+
+// Re-render contacts table & mobile cards
 function renderContactsTable() {
   const q = state.searchQuery.toLowerCase();
   const filtered = state.contacts.filter((c) => {
@@ -615,13 +691,27 @@ function renderContactsTable() {
   el.selectedContactsCount.textContent = state.selectedContacts.size;
   el.tabContactCount.textContent = state.contacts.length;
 
+  // Mobile Bottom Nav Badge
+  const mNavContactBadge = document.getElementById('mNavContactBadge');
+  if (mNavContactBadge) {
+    mNavContactBadge.textContent = state.contacts.length;
+  }
+
+  // 1. Desktop Table
   el.contactsTableBody.innerHTML = '';
 
+  // 2. Mobile Touch Cards
+  const mobileList = document.getElementById('mobileContactsList');
+  if (mobileList) {
+    mobileList.innerHTML = '';
+  }
+
   filtered.forEach((contact, idx) => {
-    const tr = document.createElement('tr');
-    tr.dataset.id = contact.id;
     const isChecked = state.selectedContacts.has(contact.id);
 
+    // Desktop Row
+    const tr = document.createElement('tr');
+    tr.dataset.id = contact.id;
     tr.innerHTML = `
       <td><input type="checkbox" data-id="${contact.id}" class="contact-checkbox" ${isChecked ? 'checked' : ''}></td>
       <td class="text-muted text-xs">${idx + 1}</td>
@@ -646,7 +736,6 @@ function renderContactsTable() {
       </td>
     `;
 
-    // Row selection toggle
     const chk = tr.querySelector('.contact-checkbox');
     chk.addEventListener('change', (e) => {
       if (e.target.checked) {
@@ -654,11 +743,10 @@ function renderContactsTable() {
       } else {
         state.selectedContacts.delete(contact.id);
       }
-      el.selectedContactsCount.textContent = state.selectedContacts.size;
+      renderContactsTable();
       updateCampaignSummary();
     });
 
-    // Customer Name Inline Edit handlers
     const nameView = tr.querySelector('.name-view');
     const nameEdit = tr.querySelector('.name-edit');
     const nameInput = tr.querySelector('.name-edit-input');
@@ -666,7 +754,6 @@ function renderContactsTable() {
     const btnRowEdit = tr.querySelector('.btn-row-edit');
     const btnSave = tr.querySelector('.btn-save-name');
     const btnCancel = tr.querySelector('.btn-cancel-name');
-    const nameText = tr.querySelector('.contact-name-text');
 
     const startEditing = () => {
       nameView.classList.add('hidden');
@@ -710,20 +797,10 @@ function renderContactsTable() {
 
         contact.name = newName;
         contact.firstName = newName.split(' ')[0] || 'Friend';
-        nameText.textContent = newName;
-        cancelEditing();
-
-        if (state.contacts.length > 0 && state.contacts[0].id === contact.id) {
-          el.mockupContactName.textContent = newName;
-          updateMockupPreview();
-        }
-
+        renderContactsTable();
         addTerminalLog('success', `✔ Customer name updated to "${newName}" (${contact.phone})`);
       } catch (err) {
         alert('Failed to save name: ' + err.message);
-      } finally {
-        btnSave.disabled = false;
-        btnSave.textContent = '✔';
       }
     };
 
@@ -742,7 +819,6 @@ function renderContactsTable() {
       }
     });
 
-    // Row delete
     const del = tr.querySelector('.contact-del-btn');
     del.addEventListener('click', async () => {
       const contactId = contact.id;
@@ -754,12 +830,70 @@ function renderContactsTable() {
     });
 
     el.contactsTableBody.appendChild(tr);
+
+    // Mobile Card
+    if (mobileList) {
+      const initials = (contact.name || 'C')
+        .split(' ')
+        .filter(Boolean)
+        .map((n) => n[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase() || 'C';
+
+      const card = document.createElement('div');
+      card.className = `m-contact-card ${isChecked ? 'selected' : ''}`;
+      card.innerHTML = `
+        <div class="m-checkbox-wrap">
+          <input type="checkbox" class="m-card-chk" ${isChecked ? 'checked' : ''}>
+        </div>
+        <div class="m-avatar">${initials}</div>
+        <div class="m-info">
+          <div class="m-name-row">
+            <span class="m-name">${escapeHtml(contact.name)}</span>
+            <button type="button" class="m-btn-edit-name" title="Edit customer name">✏️</button>
+          </div>
+          <div>
+            <span class="m-phone-badge">${contact.phone}</span>
+            ${contact.lastStatus ? `<span class="m-status-badge ${contact.lastStatus === 'Sent' ? 'text-emerald' : 'text-danger'}">${contact.lastStatus}</span>` : ''}
+          </div>
+        </div>
+        <div class="m-card-actions">
+          <button type="button" class="m-btn-del" title="Remove contact">✕</button>
+        </div>
+      `;
+
+      const mChk = card.querySelector('.m-card-chk');
+      mChk.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          state.selectedContacts.add(contact.id);
+        } else {
+          state.selectedContacts.delete(contact.id);
+        }
+        renderContactsTable();
+        updateCampaignSummary();
+      });
+
+      card.querySelector('.m-btn-edit-name').addEventListener('click', () => {
+        editCustomerNamePrompt(contact.id, contact.name);
+      });
+
+      card.querySelector('.m-btn-del').addEventListener('click', async () => {
+        const contactId = contact.id;
+        state.contacts = state.contacts.filter((c) => c.id !== contactId);
+        state.selectedContacts.delete(contactId);
+        renderContactsTable();
+        updateCampaignSummary();
+        await fetch(`/api/contacts/${contactId}`, { method: 'DELETE' }).catch(() => {});
+      });
+
+      mobileList.appendChild(card);
+    }
   });
 
   // Select all checkbox state
   el.selectAllCheckbox.checked = state.contacts.length > 0 && state.selectedContacts.size === state.contacts.length;
 
-  // Update mockup recipient name if available
   if (state.contacts.length > 0) {
     el.mockupContactName.textContent = state.contacts[0].name;
     updateMockupPreview();
@@ -981,6 +1115,12 @@ function renderMediaGallery() {
   const count = state.mediaFiles.length;
   el.mediaCountBadge.textContent = count;
   el.tabMediaCount.textContent = count;
+
+  const mNavMediaBadge = document.getElementById('mNavMediaBadge');
+  if (mNavMediaBadge) {
+    mNavMediaBadge.textContent = count;
+    mNavMediaBadge.style.display = count > 0 ? 'inline-block' : 'none';
+  }
 
   if (count === 0) {
     el.mediaGalleryContainer.classList.add('hidden');
@@ -1235,6 +1375,9 @@ socket.on('campaign:started', (data) => {
   el.resumeCampaignBtn.classList.add('hidden');
   el.stopCampaignBtn.classList.remove('hidden');
 
+  const mDot = document.getElementById('mNavCampaignDot');
+  if (mDot) mDot.style.display = 'block';
+
   el.metricTotal.textContent = data.total;
   el.metricSent.textContent = 0;
   el.metricFailed.textContent = 0;
@@ -1273,6 +1416,9 @@ socket.on('campaign:finished', (data) => {
   el.progressBarFill.style.width = '100%';
   el.progressPercentage.textContent = '100%';
 
+  const mDot = document.getElementById('mNavCampaignDot');
+  if (mDot) mDot.style.display = 'none';
+
   if (data?.summary?.report) {
     state.campaignReport = data.summary.report;
   }
@@ -1285,6 +1431,8 @@ socket.on('campaign:stopped', () => {
   state.campaignRunning = false;
   resetCampaignControls();
   el.campaignStatusLabel.textContent = 'Campaign Stopped';
+  const mDot = document.getElementById('mNavCampaignDot');
+  if (mDot) mDot.style.display = 'none';
   addTerminalLog('warn', 'Campaign was stopped.');
 });
 

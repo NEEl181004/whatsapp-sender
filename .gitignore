@@ -6,3 +6,6 @@ android_app/aligned.apk
 android_app/debug.keystore
 uploads/*
 !uploads/.gitkeep
+auth_info_baileys/
+auth_info_baileys/*
+

@@ -1788,3 +1788,364 @@ body {
 .mt-3 { margin-top: 12px; }
 .mt-4 { margin-top: 16px; }
 .mb-2 { margin-bottom: 8px; }
+
+/* ==========================================================================
+   MOBILE APK & SMARTPHONE DEDICATED STYLES (Bottom Nav & Touch Card Layout)
+   ========================================================================== */
+
+.mobile-bottom-nav {
+  display: none;
+}
+
+.mobile-contacts-list {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Prevent horizontal overflow */
+  html, body {
+    overflow-x: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-layout {
+    padding: 10px 12px 84px 12px;
+    max-width: 100vw;
+  }
+
+  /* Compact Native-style Mobile Header */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 12px;
+  }
+
+  .brand-title {
+    font-size: 1.05rem;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .header-status {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  #btnDownloadApkHeader, #btnMobileAccess {
+    display: none !important;
+  }
+
+  .status-pill {
+    padding: 4px 10px;
+    font-size: 0.75rem;
+  }
+
+  /* Hide bulky desktop tab bar on phone */
+  .nav-tabs {
+    display: none !important;
+  }
+
+  /* Show native mobile bottom navigation bar */
+  .mobile-bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(15, 23, 42, 0.94);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    z-index: 9999;
+    padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)) 8px;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+  }
+
+  .m-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    padding: 6px 4px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    gap: 3px;
+    position: relative;
+    user-select: none;
+  }
+
+  .m-nav-item.active {
+    color: #25d366;
+  }
+
+  .m-nav-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .m-nav-item.active .m-nav-icon-wrap svg {
+    stroke: #25d366;
+    transform: scale(1.08);
+    transition: transform 0.2s ease;
+  }
+
+  .m-nav-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+  }
+
+  .m-nav-badge {
+    position: absolute;
+    top: -4px;
+    right: -10px;
+    background: #10b981;
+    color: #ffffff;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+  }
+
+  .m-nav-dot {
+    position: absolute;
+    top: -2px;
+    right: -4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+
+  .m-nav-dot.connected {
+    background: #10b981;
+  }
+
+  .m-nav-dot.active-dot {
+    background: #3b82f6;
+    animation: pulse 1.5s infinite;
+  }
+
+  /* Single Column Full Width Layouts */
+  .connect-grid, .composer-grid, .campaign-settings-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .panel-card {
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  /* Hide Desktop Table on Phones */
+  .desktop-only-table {
+    display: none !important;
+  }
+
+  /* Mobile Touch-Friendly Contact Cards */
+  .mobile-contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+    max-height: 58vh;
+    overflow-y: auto;
+    padding-right: 2px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .m-contact-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 12px 14px;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  .m-contact-card.selected {
+    border-color: rgba(37, 211, 102, 0.4);
+    background: rgba(37, 211, 102, 0.06);
+  }
+
+  .m-checkbox-wrap {
+    display: flex;
+    align-items: center;
+  }
+
+  .m-checkbox-wrap input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #25d366;
+    cursor: pointer;
+  }
+
+  .m-avatar {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #10b981, #047857);
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.88rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .m-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-name-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .m-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .m-btn-edit-name {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 2px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .m-btn-edit-name:hover {
+    color: #25d366;
+  }
+
+  .m-phone-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.78rem;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.1);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+  }
+
+  .m-status-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+  }
+
+  .m-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .m-btn-del {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    color: #f87171;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  /* Mobile Touch Form Controls */
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents auto-zoom on mobile browsers */
+  }
+
+  .btn-primary, .btn-secondary, .btn-ghost {
+    min-height: 44px;
+    font-size: 0.92rem;
+  }
+
+  .drop-zone {
+    padding: 20px 14px;
+  }
+
+  .drop-buttons {
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .drop-buttons button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .table-header-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .table-actions {
+    flex-direction: column;
+  }
+
+  .search-input-wrap {
+    width: 100%;
+  }
+
+  /* Pairing / QR Box */
+  .qr-box-container {
+    padding: 14px;
+  }
+
+  .pairing-box-content {
+    padding: 16px 12px;
+  }
+
+  .pairing-code-badge {
+    font-size: 1.7rem;
+    letter-spacing: 4px;
+    padding: 10px 16px;
+  }
+
+  /* Campaign Progress Metrics on Mobile */
+  .progress-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+}
+

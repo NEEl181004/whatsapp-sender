@@ -304,8 +304,8 @@
               </div>
             </div>
 
-            <!-- Scrollable Contacts Table -->
-            <div class="table-container">
+            <!-- Scrollable Contacts Table (Desktop view) -->
+            <div class="table-container desktop-only-table">
               <table class="contacts-table">
                 <thead>
                   <tr>
@@ -322,6 +322,9 @@
                 </tbody>
               </table>
             </div>
+
+            <!-- Mobile Contact Cards Container (Mobile APK & Phone view) -->
+            <div id="mobileContactsList" class="mobile-contacts-list"></div>
 
             <div class="action-footer mt-4">
               <button class="btn-primary" onclick="switchTab('composer')">
@@ -663,6 +666,54 @@
       </div>
     </div>
   </div>
+
+  <!-- Native Mobile Bottom Navigation Bar (Visible on mobile screens / APK) -->
+  <nav class="mobile-bottom-nav">
+    <button type="button" class="m-nav-item active" data-tab="connect">
+      <div class="m-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm1 14.93V17a1 1 0 0 1-2 0v-.07A7.003 7.003 0 0 1 5.07 11H5a1 1 0 0 1 0-2h.07A7.003 7.003 0 0 1 11 3.07V3a1 1 0 0 1 2 0v.07A7.003 7.003 0 0 1 18.93 9H19a1 1 0 0 1 0 2h-.07A7.003 7.003 0 0 1 13 16.93z"/>
+        </svg>
+        <span class="m-nav-dot" id="mNavConnectDot"></span>
+      </div>
+      <span class="m-nav-label">Connect</span>
+    </button>
+
+    <button type="button" class="m-nav-item" data-tab="contacts">
+      <div class="m-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        <span class="m-nav-badge" id="mNavContactBadge">0</span>
+      </div>
+      <span class="m-nav-label">Contacts</span>
+    </button>
+
+    <button type="button" class="m-nav-item" data-tab="composer">
+      <div class="m-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+          <line x1="9" y1="10" x2="15" y2="10"></line>
+          <line x1="12" y1="7" x2="12" y2="13"></line>
+        </svg>
+        <span class="m-nav-badge" id="mNavMediaBadge" style="display:none;">0</span>
+      </div>
+      <span class="m-nav-label">Compose</span>
+    </button>
+
+    <button type="button" class="m-nav-item" data-tab="campaign">
+      <div class="m-nav-icon-wrap">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+        <span class="m-nav-dot active-dot" id="mNavCampaignDot" style="display:none;"></span>
+      </div>
+      <span class="m-nav-label">Campaign</span>
+    </button>
+  </nav>
 
   <script src="/app.js"></script>
 </body>
