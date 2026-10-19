@@ -1,0 +1,8 @@
+node_modules
+android_app/bin
+android_app/compiled_res.zip
+android_app/unaligned.apk
+android_app/aligned.apk
+android_app/debug.keystore
+uploads/*
+!uploads/.gitkeep

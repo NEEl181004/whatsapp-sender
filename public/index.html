@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Direct Video & Contacts Dispatcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <meta name="theme-color" content="#111b21">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="bg-glow glow-top"></div>
+  <div class="bg-glow glow-bottom"></div>
+
+  <div class="app-layout">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+            <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2M12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.15 12.04 20.15C10.56 20.15 9.11 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.81 7.37 7.5 3.67 12.05 3.67M9.04 7.62C8.87 7.62 8.59 7.69 8.35 7.94C8.11 8.2 7.43 8.84 7.43 10.14C7.43 11.44 8.38 12.69 8.51 12.87C8.65 13.04 10.33 15.78 12.98 16.82C15.19 17.68 15.64 17.51 16.11 17.47C16.58 17.43 17.64 16.84 17.85 16.23C18.07 15.62 18.07 15.1 18.01 15C17.94 14.89 17.78 14.83 17.53 14.71C17.29 14.58 16.08 13.99 15.86 13.9C15.63 13.82 15.47 13.78 15.3 14.02C15.14 14.27 14.67 14.83 14.52 15C14.38 15.17 14.23 15.19 13.99 15.07C13.74 14.95 12.95 14.69 12.01 13.85C11.28 13.2 10.78 12.39 10.64 12.15C10.5 11.9 10.63 11.77 10.75 11.65C10.86 11.54 11 11.36 11.12 11.22C11.25 11.08 11.29 10.97 11.37 10.81C11.45 10.64 11.41 10.5 11.35 10.38C11.29 10.25 10.81 9.07 10.6 8.57C10.4 8.08 10.2 8.14 10.05 8.14H9.68C9.51 8.14 9.24 8.14 9.04 7.62Z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">WhatsApp Direct Sender</h1>
+          <p class="brand-subtitle">Google Contacts &bull; Instant Video &bull; Free WhatsApp Engine</p>
+        </div>
+      </div>
+
+      <!-- Live Connection Status Pill -->
+      <div class="header-status">
+        <a href="/api/download-apk" download="WhatsApp-Sender.apk" class="btn-primary btn-sm" id="btnDownloadApkHeader" style="gap: 6px; padding: 6px 12px; font-size: 0.8rem; text-decoration: none; display: inline-flex; align-items: center;" title="Download Android APK directly">
+          📦 Download APK
+        </a>
+        <button type="button" id="btnMobileAccess" class="btn-secondary btn-sm" title="Use dispatcher on your Android or iPhone" style="gap: 6px; padding: 6px 12px; font-size: 0.8rem;">
+          📱 Phone Access
+        </button>
+        <div id="connectionPill" class="status-pill status-disconnected">
+          <span class="status-dot"></span>
+          <span id="connectionText" class="status-label">Disconnected</span>
+        </div>
+        <button id="logoutBtn" class="btn-ghost btn-sm hidden" title="Disconnect WhatsApp Session">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
+          Disconnect
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab active" data-tab="connect">
+        <span class="tab-step">1</span>
+        <span>WhatsApp Connect</span>
+      </button>
+      <button class="nav-tab" data-tab="contacts">
+        <span class="tab-step">2</span>
+        <span>Google Contacts (<span id="tabContactCount">0</span>)</span>
+      </button>
+      <button class="nav-tab" data-tab="composer">
+        <span class="tab-step">3</span>
+        <span>Message &amp; Media (<span id="tabMediaCount">0</span>)</span>
+      </button>
+      <button class="nav-tab" data-tab="campaign">
+        <span class="tab-step">4</span>
+        <span>Send &amp; Monitor</span>
+      </button>
+    </nav>
+
+    <!-- Main Content Panels -->
+    <main class="main-content">
+
+      <!-- ================= TAB 1: WHATSAPP CONNECT ================= -->
+      <section id="tab-connect" class="tab-panel active">
+        <div class="panel-card connect-grid">
+          <!-- QR / Pairing Code Display Box -->
+          <div class="qr-box-container">
+            <!-- Mode Switcher -->
+            <div class="login-mode-tabs" id="loginModeTabs">
+              <button type="button" class="login-mode-tab active" id="btnModePairing">🔢 Login with Phone Number</button>
+              <button type="button" class="login-mode-tab" id="btnModeQr">📷 Scan QR Code</button>
+            </div>
+
+            <!-- View 1: Pairing Code Mode (Default for Phone & Desktop) -->
+            <div id="pairingModeView" class="pairing-container">
+              <div class="pairing-box-content">
+                <div class="pairing-icon-wrap">
+                  <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#25D366" stroke-width="2">
+                    <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                    <line x1="12" y1="18" x2="12.01" y2="18"></line>
+                  </svg>
+                </div>
+                <h3 class="pairing-heading">Login with Phone Number</h3>
+                <p class="pairing-sub text-muted text-xs">Enter your WhatsApp phone number with country code to get an instant 8-digit pairing code.</p>
+                
+                <div class="pairing-input-row mt-3">
+                  <input type="tel" id="pairingPhoneInput" placeholder="e.g. 919725537047" class="pairing-input">
+                  <button type="button" id="btnGetPairingCode" class="btn-primary btn-sm">Get Code</button>
+                </div>
+
+                <div id="pairingCodeCard" class="pairing-result-card hidden mt-3">
+                  <span class="pairing-step-hint">Enter this 8-digit code on your WhatsApp mobile app:</span>
+                  <div class="pairing-digit-box" id="pairingCodeText">---- - ----</div>
+                  <button type="button" id="btnCopyPairingCode" class="btn-secondary btn-xs mt-2">📋 Copy Code</button>
+                  <p class="text-xs text-muted mt-2">On your phone: WhatsApp &gt; Linked Devices &gt; Link a Device &gt; <strong>Link with phone number instead</strong></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- View 2: QR Mode -->
+            <div id="qrModeView" class="hidden">
+              <div id="qrLoading" class="qr-placeholder">
+                <div class="spinner"></div>
+                <p>Initializing WhatsApp Engine...</p>
+                <small class="text-muted">Generating fresh connection QR code</small>
+                <button id="forceResetQrBtn" class="btn-secondary btn-sm mt-3" style="padding: 6px 14px; font-size: 12px; margin-top: 12px; cursor: pointer;">⚡ Force Reset &amp; Regenerate QR</button>
+              </div>
+
+              <div id="qrDisplay" class="qr-display hidden">
+                <div class="qr-frame">
+                  <img id="qrImage" src="" alt="WhatsApp Web QR Code">
+                  <div class="qr-scan-line"></div>
+                </div>
+                <div class="qr-caption">
+                  <span class="pulse-indicator"></span>
+                  <span>Ready to scan with your phone</span>
+                </div>
+              </div>
+            </div>
+
+
+            <div id="connectedCard" class="connected-card hidden">
+              <div class="success-icon-wrap">
+                <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="#25D366" stroke-width="2.5">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <h3 class="connected-name" id="connectedUserName">WhatsApp Account</h3>
+              <p class="connected-phone" id="connectedUserPhone">+1234567890</p>
+              <div class="connected-badge">
+                <span class="dot-green"></span>
+                <span>Active &amp; Ready to Send</span>
+              </div>
+              <p class="session-info">
+                🔒 Your session is stored locally on your machine. You can send messages and videos instantly without scanning again.
+              </p>
+              <button id="reconnectBtn" class="btn-secondary btn-sm mt-3">Link Another WhatsApp Account</button>
+            </div>
+          </div>
+
+          <!-- Instructions Card -->
+          <div class="instructions-card">
+            <h2 class="card-title">How to link your WhatsApp:</h2>
+            <ol class="step-list">
+              <li>
+                <div class="step-num">1</div>
+                <div>
+                  <strong>Open WhatsApp</strong> on your Android phone or iPhone.
+                </div>
+              </li>
+              <li>
+                <div class="step-num">2</div>
+                <div>
+                  Tap <strong>Menu (⋮)</strong> on Android or <strong>Settings (⚙)</strong> on iPhone.
+                </div>
+              </li>
+              <li>
+                <div class="step-num">3</div>
+                <div>
+                  Select <strong>Linked Devices</strong>, then tap <strong>Link a Device</strong>.
+                </div>
+              </li>
+              <li>
+                <div class="step-num">4</div>
+                <div>
+                  Point your phone's camera at the <strong>QR code</strong> on this screen.
+                </div>
+              </li>
+            </ol>
+
+            <div class="feature-checklist">
+              <div class="feature-item">
+                <span class="check-mark">✓</span>
+                <span><strong>100% Free</strong> &mdash; No monthly subscriptions or paid API tokens</span>
+              </div>
+              <div class="feature-item">
+                <span class="check-mark">✓</span>
+                <span><strong>Instant Video Dispatch</strong> &mdash; Sends full HD videos with custom captions</span>
+              </div>
+              <div class="feature-item">
+                <span class="check-mark">✓</span>
+                <span><strong>Smart Anti-Ban Delays</strong> &mdash; Built-in human pacing prevents spam flags</span>
+              </div>
+              <div class="feature-item">
+                <span class="check-mark">✓</span>
+                <span><strong>Google Contacts Sync</strong> &mdash; Direct 1-click import from contacts.google.com</span>
+              </div>
+            </div>
+
+            <div class="action-footer">
+              <button class="btn-primary" onclick="switchTab('contacts')">
+                Continue to Contacts
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5l7 7-7 7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 2: GOOGLE CONTACTS ================= -->
+      <section id="tab-contacts" class="tab-panel">
+        <div class="panel-card">
+          <div class="card-header-bar">
+            <div>
+              <h2 class="card-title">Import Google Contacts</h2>
+              <p class="card-desc">
+                Export your contacts from <a href="https://contacts.google.com" target="_blank" class="accent-link">contacts.google.com</a> (Click <strong>Export</strong> &rarr; Select <strong>Google CSV</strong> or <strong>vCard</strong>) and drop it here.
+              </p>
+            </div>
+            <!-- Country Code Selector -->
+            <div class="country-prefix-box">
+              <label for="countryCodeSelect">Default Country Code (for 10-digit numbers):</label>
+              <div class="select-wrapper">
+                <select id="countryCodeSelect">
+                  <option value="91" selected>🇮🇳 India (+91)</option>
+                  <option value="1">🇺🇸/🇨🇦 USA / Canada (+1)</option>
+                  <option value="44">🇬🇧 United Kingdom (+44)</option>
+                  <option value="971">🇦🇪 UAE (+971)</option>
+                  <option value="966">🇸🇦 Saudi Arabia (+966)</option>
+                  <option value="61">🇦🇺 Australia (+61)</option>
+                  <option value="65">🇸🇬 Singapore (+65)</option>
+                  <option value="60">🇲🇾 Malaysia (+60)</option>
+                  <option value="49">🇩🇪 Germany (+49)</option>
+                  <option value="33">🇫🇷 France (+33)</option>
+                  <option value="234">🇳🇬 Nigeria (+234)</option>
+                  <option value="27">🇿🇦 South Africa (+27)</option>
+                  <option value="55">🇧🇷 Brazil (+55)</option>
+                  <option value="">None (Already in CSV with +)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drag and Drop Box -->
+          <div class="drop-zone" id="contactsDropZone">
+            <input type="file" id="contactsFileInput" accept=".csv, .vcf, .xlsx, .xls, .txt" class="hidden-file-input">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <p class="drop-title">Drag &amp; Drop your <strong>Google Contacts CSV</strong> or <strong>.VCF</strong> here</p>
+              <p class="drop-sub">Also supports Excel (.xlsx, .xls) and text files</p>
+              <div class="drop-buttons">
+                <button type="button" class="btn-primary" id="btnSyncPhoneContacts" style="display: inline-flex; align-items: center; gap: 6px;" title="Read contacts directly from your Android phone address book">
+                  📱 Import Phone Contacts
+                </button>
+                <button type="button" class="btn-secondary" onclick="document.getElementById('contactsFileInput').click()">
+                  📁 Browse Files
+                </button>
+                <button type="button" class="btn-ghost" id="openPasteModalBtn">
+                  📋 Paste Numbers Manually
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contacts Table Controls -->
+          <div id="contactsTableSection" class="contacts-table-section hidden">
+            <div class="table-header-controls">
+              <div class="table-stats">
+                <span class="badge badge-emerald"><strong id="totalContactsLoaded">0</strong> Total Loaded</span>
+                <span class="badge badge-blue"><strong id="selectedContactsCount">0</strong> Selected</span>
+                <span class="badge" id="contactsAccountBadge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">👤 Account: None</span>
+              </div>
+              <div class="table-actions">
+                <div class="search-input-wrap">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input type="text" id="contactSearchInput" placeholder="Search contact name or number...">
+                </div>
+                <button id="clearContactsBtn" class="btn-ghost btn-sm text-danger">Clear All</button>
+              </div>
+            </div>
+
+            <!-- Scrollable Contacts Table -->
+            <div class="table-container">
+              <table class="contacts-table">
+                <thead>
+                  <tr>
+                    <th width="40"><input type="checkbox" id="selectAllCheckbox" checked></th>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Phone Number</th>
+                    <th>WhatsApp JID</th>
+                    <th width="80">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="contactsTableBody">
+                  <!-- Dynamically rendered -->
+                </tbody>
+              </table>
+            </div>
+
+            <div class="action-footer mt-4">
+              <button class="btn-primary" onclick="switchTab('composer')">
+                Proceed to Message &amp; Video Composer
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5l7 7-7 7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 3: MESSAGE & VIDEO COMPOSER ================= -->
+      <section id="tab-composer" class="tab-panel">
+        <div class="composer-grid">
+          <!-- Left: Editor Controls -->
+          <div class="panel-card">
+            <h2 class="card-title">Message &amp; Video Setup</h2>
+            <p class="card-desc">Write your personalized message and upload the video you wish to dispatch.</p>
+
+            <!-- Personalization Tags -->
+            <div class="form-group">
+              <label>Insert Personalization Tags:</label>
+              <div class="tag-chips">
+                <button type="button" class="tag-chip" onclick="insertTag('{name}')" title="Full Name of Contact">
+                  + {name}
+                </button>
+                <button type="button" class="tag-chip" onclick="insertTag('{firstName}')" title="First Name only">
+                  + {firstName}
+                </button>
+                <button type="button" class="tag-chip" onclick="insertTag('{phone}')" title="Formatted Phone Number">
+                  + {phone}
+                </button>
+              </div>
+            </div>
+
+            <!-- Message Textarea -->
+            <div class="form-group">
+              <div class="label-row">
+                <label for="messageTemplate">Message Text / Video Caption:</label>
+                <span id="charCount" class="text-muted text-xs">0 chars</span>
+              </div>
+              <textarea id="messageTemplate" rows="5" placeholder="Hi {firstName}, here is a special video for you! Check it out and let me know your thoughts." class="custom-textarea"></textarea>
+            </div>
+
+            <!-- Multi-Media Upload Section (Images & Videos) -->
+            <div class="form-group mt-3">
+              <div class="label-row">
+                <label>Attach Media (Multiple Images &amp; Videos):</label>
+                <span id="mediaSummaryText" class="text-muted text-xs">0 files attached</span>
+              </div>
+              
+              <div class="media-drop-zone" id="mediaDropZone">
+                <input type="file" id="mediaFileInput" accept="image/*,video/*" multiple class="hidden-file-input">
+                <div id="mediaDropPrompt" class="media-drop-content">
+                  <div class="media-drop-icons">
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#25d366" stroke-width="1.8">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                      <polyline points="21 15 16 10 5 21"></polyline>
+                    </svg>
+                    <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#3b82f6" stroke-width="1.8">
+                      <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                    </svg>
+                  </div>
+                  <p><strong>Click to choose files</strong> or drag and drop images &amp; videos here</p>
+                  <small class="text-muted">Supports multiple files &bull; Images (JPG, PNG, WEBP) &bull; Videos (MP4, MKV, MOV up to 2GB)</small>
+                </div>
+              </div>
+
+              <!-- Media Items List / Gallery -->
+              <div id="mediaGalleryContainer" class="media-gallery-container hidden">
+                <div class="media-gallery-header">
+                  <span class="gallery-title">Attached Media Items (<span id="mediaCountBadge">0</span>)</span>
+                  <button type="button" id="clearAllMediaBtn" class="btn-ghost btn-xs text-danger">Remove All</button>
+                </div>
+                <div id="mediaListGrid" class="media-list-grid">
+                  <!-- Dynamically rendered media cards -->
+                </div>
+              </div>
+            </div>
+
+            <div class="action-footer mt-4">
+              <button class="btn-primary" onclick="switchTab('campaign')">
+                Go to Send &amp; Monitor
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14"></path>
+                  <path d="M12 5l7 7-7 7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Real-time WhatsApp Chat Mockup Preview -->
+          <div class="panel-card preview-card">
+            <h3 class="card-title text-sm text-muted">Live Recipient Preview</h3>
+            <div class="phone-mockup">
+              <div class="phone-screen">
+                <!-- WhatsApp Mockup Header -->
+                <div class="mockup-header">
+                  <div class="mockup-avatar">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                      <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div class="mockup-contact-name" id="mockupContactName">Alex Doe</div>
+                    <div class="mockup-status">online</div>
+                  </div>
+                </div>
+
+                <!-- Chat bubble container -->
+                <div class="mockup-chat-body">
+                  <div class="chat-bubble">
+                    <!-- Media inside bubble -->
+                    <div id="mockupMediaWrap" class="bubble-media hidden">
+                      <div id="mockupMediaPreview" class="mockup-media-preview"></div>
+                      <span class="media-pill-badge" id="mockupMediaBadge">MEDIA</span>
+                    </div>
+
+                    <!-- Caption/Text message -->
+                    <div class="bubble-text" id="mockupBubbleText">
+                      Hi Alex, here is a special message for you!
+                    </div>
+                    <div class="bubble-meta">
+                      <span id="mockupTime">11:42</span>
+                      <span class="double-tick">✓✓</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= TAB 4: SEND & MONITOR ================= -->
+      <section id="tab-campaign" class="tab-panel">
+        <div class="panel-card">
+          <!-- Top Row: Safety Delay & Quick Test -->
+          <div class="campaign-settings-grid">
+            <!-- Safety Settings -->
+            <div class="settings-box">
+              <div class="label-row mb-2">
+                <h3 class="settings-title">⚡ Sending Speed &amp; Human Pacing</h3>
+                <span class="badge badge-emerald text-xs">Pre-upload Enabled</span>
+              </div>
+              <p class="settings-desc">Media uploads to WhatsApp ONCE, then relays instantly without consuming internet data for each person.</p>
+              
+              <!-- Speed Presets -->
+              <div class="speed-presets-bar mb-2">
+                <button type="button" class="btn-preset active" data-min="1" data-max="3" onclick="setSpeedPreset(1, 3, this)">
+                  🚀 Turbo (1-3s)
+                </button>
+                <button type="button" class="btn-preset" data-min="3" data-max="6" onclick="setSpeedPreset(3, 6, this)">
+                  ⚖️ Balanced (3-6s)
+                </button>
+                <button type="button" class="btn-preset" data-min="5" data-max="10" onclick="setSpeedPreset(5, 10, this)">
+                  🛡️ Safe Anti-Ban (5-10s)
+                </button>
+              </div>
+
+              <div class="delay-inputs">
+                <div>
+                  <label for="minDelayInput">Min Delay (sec):</label>
+                  <input type="number" id="minDelayInput" value="1" min="1" max="60" class="input-sm">
+                </div>
+                <div>
+                  <label for="maxDelayInput">Max Delay (sec):</label>
+                  <input type="number" id="maxDelayInput" value="3" min="1" max="120" class="input-sm">
+                </div>
+              </div>
+            </div>
+
+            <!-- Single Test Send -->
+            <div class="test-send-box">
+              <h3 class="settings-title">🚀 Instant Test Send</h3>
+              <p class="settings-desc">Test your media and message to your own number first before sending to everyone.</p>
+              <div class="test-send-row">
+                <input type="text" id="testPhoneInput" placeholder="Enter phone with country code (e.g. 919876543210)" class="input-sm flex-1">
+                <button type="button" id="sendTestBtn" class="btn-secondary btn-sm">Send Test Now</button>
+              </div>
+              <div id="testSendFeedback" class="test-feedback"></div>
+            </div>
+          </div>
+
+          <!-- Campaign Summary & Big Launch Button -->
+          <div class="campaign-summary-bar">
+            <div class="summary-stats">
+              <div class="summary-stat-item">
+                <span class="stat-label">Ready Recipients</span>
+                <span class="stat-val" id="summaryRecipientCount">0</span>
+              </div>
+              <div class="summary-stat-item">
+                <span class="stat-label">Media Attached</span>
+                <span class="stat-val text-emerald" id="summaryMediaStatus">No (Text Only)</span>
+              </div>
+              <div class="summary-stat-item">
+                <span class="stat-label">Estimated Time</span>
+                <span class="stat-val" id="summaryEstTime">0 mins</span>
+              </div>
+            </div>
+
+            <div class="launch-actions">
+              <button id="startCampaignBtn" class="btn-primary btn-lg">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+                Start WhatsApp Campaign
+              </button>
+              <button id="pauseCampaignBtn" class="btn-secondary btn-lg hidden">Pause</button>
+              <button id="resumeCampaignBtn" class="btn-secondary btn-lg hidden">Resume</button>
+              <button id="stopCampaignBtn" class="btn-ghost btn-lg text-danger hidden">Stop</button>
+            </div>
+          </div>
+
+          <!-- Live Progress Section -->
+          <div id="progressSection" class="progress-section hidden">
+            <div class="progress-info-row">
+              <div class="progress-status-badge">
+                <span class="pulse-indicator"></span>
+                <span id="campaignStatusLabel">Sending Campaign...</span>
+              </div>
+              <span id="progressPercentage" class="progress-percent-val">0%</span>
+            </div>
+
+            <div class="progress-track">
+              <div id="progressBarFill" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+
+            <div class="metric-cards">
+              <div class="metric-card metric-total">
+                <span class="metric-num" id="metricTotal">0</span>
+                <span class="metric-title">Total</span>
+              </div>
+              <div class="metric-card metric-sent">
+                <span class="metric-num" id="metricSent">0</span>
+                <span class="metric-title">Delivered</span>
+              </div>
+              <div class="metric-card metric-failed">
+                <span class="metric-num" id="metricFailed">0</span>
+                <span class="metric-title">Failed / Not on WA</span>
+              </div>
+              <div class="metric-card metric-remaining">
+                <span class="metric-num" id="metricRemaining">0</span>
+                <span class="metric-title">Remaining</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Terminal / Audit Console -->
+          <div class="terminal-section mt-4">
+            <div class="terminal-header">
+              <div class="terminal-dots">
+                <span class="t-dot t-red"></span>
+                <span class="t-dot t-yellow"></span>
+                <span class="t-dot t-green"></span>
+              </div>
+              <div class="terminal-title">Real-time Activity &amp; Delivery Log</div>
+              <div class="terminal-tools">
+                <button id="clearLogsBtn" class="btn-icon" title="Clear Logs">✕</button>
+                <button id="exportReportBtn" class="btn-secondary btn-xs" title="Export CSV Report">
+                  📥 Export Report (.CSV)
+                </button>
+              </div>
+            </div>
+            <div id="terminalBody" class="terminal-body">
+              <div class="terminal-line text-muted">[System] Ready to start campaign. Connect WhatsApp and load contacts.</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Modal for Pasting Contacts -->
+  <div id="pasteModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Paste Contacts Manually</h3>
+        <button id="closePasteModalBtn" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-sm text-muted mb-2">
+          Enter contacts line by line in formats like: <br>
+          <code>John Doe, +919876543210</code> or just <code>9876543210</code>
+        </p>
+        <textarea id="pasteModalTextarea" rows="8" placeholder="Alex, 9876543210&#10;Sarah, +1 555-0199&#10;9988776655" class="custom-textarea font-mono"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelPasteBtn" class="btn-ghost">Cancel</button>
+        <button id="importPastedBtn" class="btn-primary">Import Contacts</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Mobile Phone Access -->
+  <div id="mobileAccessModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">📱 Open on your Android / iPhone</h3>
+        <button id="closeMobileModalBtn" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body text-center">
+        <!-- Option 1: Direct APK Download -->
+        <div style="background: rgba(37, 211, 102, 0.12); border: 1px solid rgba(37, 211, 102, 0.35); border-radius: 8px; padding: 14px; margin-bottom: 16px; text-align: center;">
+          <h4 style="color: #4ade80; margin-bottom: 4px; font-size: 0.95rem;">📦 Standalone Android App (.APK)</h4>
+          <p class="text-xs text-muted mb-3">Install the WhatsApp Sender app on your Android phone for full-screen performance.</p>
+          <a href="/api/download-apk" download="WhatsApp-Sender.apk" class="btn-primary btn-sm" style="display: inline-flex; align-items: center; gap: 8px; text-decoration: none; padding: 9px 20px; font-weight: bold; font-size: 0.85rem;">
+            ⬇ Download WhatsApp-Sender.apk
+          </a>
+        </div>
+
+        <div style="border-top: 1px solid rgba(255, 255, 255, 0.1); margin: 16px 0 12px 0;"></div>
+
+        <!-- Option 2: Browser / Wi-Fi Access -->
+        <h4 style="color: #e5e7eb; margin-bottom: 4px; font-size: 0.9rem;">🌐 Mobile Browser / Wi-Fi URL</h4>
+        <p class="text-xs text-muted mb-2">Or open directly in Chrome / Safari on any phone connected to the same Wi-Fi:</p>
+        <div style="display: flex; gap: 8px; margin: 10px 0;">
+          <input type="text" id="mobileUrlInput" readonly class="pairing-input font-mono" style="flex: 1; text-align: center;">
+          <button type="button" id="btnCopyMobileUrl" class="btn-secondary btn-sm">Copy</button>
+        </div>
+        <div style="background: #fff; padding: 12px; border-radius: 8px; display: inline-block; margin: 8px 0;">
+          <img id="mobileQrImg" src="" alt="Scan to open on phone" width="150" height="150" style="display: block;">
+        </div>
+        <p class="text-xs text-muted" style="margin-top: 4px;">Point phone camera at QR code above to open immediately.</p>
+        <div style="background: rgba(37, 211, 102, 0.08); border: 1px solid rgba(37, 211, 102, 0.2); border-radius: 6px; padding: 10px; margin-top: 12px; text-align: left;">
+          <strong style="color: #4ade80; font-size: 0.8rem;">PWA Home Screen App:</strong>
+          <p class="text-xs text-muted" style="margin-top: 4px;">In Chrome on your phone, tap <strong>⋮ Menu</strong> &gt; tap <strong>"Add to Home screen"</strong> to install as a PWA app.</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="dismissMobileModalBtn" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

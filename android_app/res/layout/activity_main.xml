@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#111827">
+
+    <!-- Main Web View -->
+    <WebView
+        android:id="@+id/webView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Top Floating Settings Button -->
+    <ImageButton
+        android:id="@+id/btnToggleSettings"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentEnd="true"
+        android:layout_margin="12dp"
+        android:background="#801f2937"
+        android:src="@android:drawable/ic_menu_preferences"
+        android:contentDescription="Server Settings" />
+
+    <!-- Connection Setup & Error Screen (Shown when disconnected or on settings tap) -->
+    <ScrollView
+        android:id="@+id/connectionDialog"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:visibility="gone"
+        android:background="#111827">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="28dp">
+
+            <ImageView
+                android:layout_width="72dp"
+                android:layout_height="72dp"
+                android:src="@mipmap/ic_launcher"
+                android:contentDescription="App Icon" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="WhatsApp Sender Mobile"
+                android:textColor="#25D366"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:layout_marginTop="16dp" />
+
+            <TextView
+                android:id="@+id/tvStatusMsg"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Connect to WhatsApp Sender running on your PC"
+                android:textColor="#9ca3af"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:layout_marginTop="8dp" />
+
+            <!-- Server URL Input Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#1f2937"
+                android:padding="16dp"
+                android:layout_marginTop="24dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PC Server IP Address:"
+                    android:textColor="#e5e7eb"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <EditText
+                    android:id="@+id/etServerUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="#374151"
+                    android:textColor="#ffffff"
+                    android:textColorHint="#9ca3af"
+                    android:hint="http://192.168.1.101:3000"
+                    android:textSize="15sp"
+                    android:padding="12dp"
+                    android:layout_marginTop="8dp"
+                    android:singleLine="true" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="14dp">
+
+                    <Button
+                        android:id="@+id/btnConnect"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:background="#25D366"
+                        android:textColor="#000000"
+                        android:textStyle="bold"
+                        android:textSize="14sp"
+                        android:text="Connect" />
+
+                    <Button
+                        android:id="@+id/btnAutoDetect"
+                        android:layout_width="0dp"
+                        android:layout_height="48dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:background="#374151"
+                        android:textColor="#ffffff"
+                        android:textSize="13sp"
+                        android:text="Auto-Detect PC" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Troubleshooting Tips Card -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:background="#172033"
+                android:padding="14dp"
+                android:layout_marginTop="20dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="💡 Troubleshooting Checklist:"
+                    android:textColor="#60a5fa"
+                    android:textSize="12.5sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1. Make sure your phone and PC are connected to the SAME Wi-Fi network."
+                    android:textColor="#9ca3af"
+                    android:textSize="12sp"
+                    android:layout_marginTop="6dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="2. Check your PC's IP: Open WhatsApp-Sender.exe on PC to see the Mobile URL."
+                    android:textColor="#9ca3af"
+                    android:textSize="12sp"
+                    android:layout_marginTop="4dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="3. If Windows Firewall blocks it: Double-click Allow-Firewall.bat on your PC."
+                    android:textColor="#9ca3af"
+                    android:textSize="12sp"
+                    android:layout_marginTop="4dp" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+
+</RelativeLayout>
