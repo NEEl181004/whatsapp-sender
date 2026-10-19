@@ -184,6 +184,7 @@ app.post('/api/whatsapp/restart', async (req, res) => {
   try {
     const { session } = getDeviceContext(req);
     await session.logout();
+    await session.init();
     res.json({ success: true, message: 'Session reset. Generating fresh QR code...' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -627,17 +628,15 @@ io.on('connection', (socket) => {
     const campaign = getCampaignManager(cleanId, session);
     setupCampaignListeners(campaign, cleanId);
 
+    // If session is disconnected, auto-init so QR code is generated for this device
+    if (session.status === 'disconnected') {
+      session.init();
+    }
+
     // Send immediate initial states for this device only
     socket.emit('whatsapp:status', session.getStatus());
     socket.emit('campaign:status', campaign.getStatus());
   });
-
-  // Fallback for default connections
-  const defaultSession = sessionManager.getSession('default');
-  const defaultCampaign = getCampaignManager('default', defaultSession);
-  setupCampaignListeners(defaultCampaign, 'default');
-  socket.emit('whatsapp:status', defaultSession.getStatus());
-  socket.emit('campaign:status', defaultCampaign.getStatus());
 });
 
 // SessionManager events routed per-device

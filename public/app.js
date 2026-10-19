@@ -320,6 +320,9 @@ if (el.btnModeQr && el.btnModePairing) {
     el.btnModePairing.classList.remove('active');
     if (el.qrModeView) el.qrModeView.classList.remove('hidden');
     if (el.pairingModeView) el.pairingModeView.classList.add('hidden');
+    if (state.whatsappStatus !== 'connected' && (!el.qrImage || !el.qrImage.src || el.qrImage.src.includes('data:image/svg') || el.qrImage.classList.contains('hidden'))) {
+      fetch('/api/whatsapp/restart', { method: 'POST' }).catch(() => {});
+    }
   });
 
   el.btnModePairing.addEventListener('click', () => {

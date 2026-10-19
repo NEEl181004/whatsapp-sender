@@ -3,7 +3,9 @@ import makeWASocket, {
   fetchLatestBaileysVersion,
   prepareWAMessageMedia,
   generateWAMessageFromContent,
-  Browsers
+  Browsers,
+  DisconnectReason,
+  makeCacheableSignalKeyStore
 } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
@@ -61,21 +63,28 @@ export class WhatsAppSession extends EventEmitter {
         }
       }
 
+      const logger = pino({ level: 'silent' });
       const { state, saveCreds } = await useMultiFileAuthState(this.authFolder);
-      const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1015901307] }));
+      const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1043857760] }));
 
       const makeSocket = makeWASocket.default || makeWASocket;
 
       this.sock = makeSocket({
         version,
-        logger: pino({ level: 'silent' }),
-        auth: state,
+        logger,
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, logger)
+        },
         printQRInTerminal: false,
         browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         generateHighQualityLinkPreview: false,
-        markOnlineOnConnect: false
+        markOnlineOnConnect: true,
+        connectTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 60000,
+        keepAliveIntervalMs: 30000
       });
 
       this.sock.ev.on('creds.update', saveCreds);
@@ -96,11 +105,12 @@ export class WhatsAppSession extends EventEmitter {
 
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const shouldReconnect = statusCode !== 401 && statusCode !== 403 && !this.isExplicitLogout;
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
+          const shouldReconnect = !this.isExplicitLogout && (!isLoggedOut || !this.hasSavedCredentials());
 
           console.log(`[WhatsApp ${this.sessionId}] connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
 
-          if (statusCode === 401 || statusCode === 403 || this.isExplicitLogout) {
+          if (this.isExplicitLogout || (this.hasSavedCredentials() && isLoggedOut)) {
             this.status = 'disconnected';
             this.userInfo = null;
             this.accountPhone = null;
