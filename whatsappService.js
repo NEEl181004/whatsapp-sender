@@ -71,7 +71,7 @@ export class WhatsAppSession extends EventEmitter {
         logger: pino({ level: 'silent' }),
         auth: state,
         printQRInTerminal: false,
-        browser: Browsers.windows('Desktop'),
+        browser: Browsers.ubuntu('Chrome'),
         syncFullHistory: false,
         shouldSyncHistoryMessage: () => false,
         generateHighQualityLinkPreview: false,
@@ -150,19 +150,31 @@ export class WhatsAppSession extends EventEmitter {
       throw new Error('Phone number is required');
     }
 
-    const cleanDigits = String(phoneNumber).replace(/\D/g, '');
-    if (cleanDigits.length < 8) {
-      throw new Error('Invalid phone number format');
+    let cleanDigits = String(phoneNumber).replace(/\D/g, '');
+    cleanDigits = cleanDigits.replace(/^0+/, '');
+
+    // Auto-detect 10-digit Indian phone numbers missing '91'
+    if (cleanDigits.length === 10 && /^[6-9]/.test(cleanDigits)) {
+      cleanDigits = '91' + cleanDigits;
     }
 
-    if (!this.sock || this.status === 'disconnected') {
-      // Ensure no stale credentials interfere with pairing code generation
-      await this.clearAuthFolder();
-      await this.init();
+    if (cleanDigits.length < 8) {
+      throw new Error('Invalid phone number format. Please include country code (e.g. 919725537047)');
     }
 
     if (this.status === 'connected') {
       throw new Error('Already connected to WhatsApp. Please disconnect first.');
+    }
+
+    if (!this.sock || this.status === 'disconnected') {
+      // Ensure clean auth state and initialize socket
+      await this.clearAuthFolder();
+      await this.init();
+      // Allow 2.5s for WebSocket handshake with WhatsApp servers before requesting pairing code
+      await new Promise((r) => setTimeout(r, 2500));
+    } else {
+      // Small pause if socket is already open
+      await new Promise((r) => setTimeout(r, 500));
     }
 
     try {

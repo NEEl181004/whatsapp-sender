@@ -63,6 +63,7 @@ const el = {
   btnGetPairingCode: document.getElementById('btnGetPairingCode'),
   pairingCodeCard: document.getElementById('pairingCodeCard'),
   pairingCodeText: document.getElementById('pairingCodeText'),
+  pairingPhoneDisplay: document.getElementById('pairingPhoneDisplay'),
   btnCopyPairingCode: document.getElementById('btnCopyPairingCode'),
 
   qrLoading: document.getElementById('qrLoading'),
@@ -355,8 +356,8 @@ if (el.btnGetPairingCode && el.pairingPhoneInput) {
         throw new Error(data.error || 'Failed to generate pairing code');
       }
 
-      displayPairingCode(data.code);
-      addTerminalLog('success', `✔ Pairing code: ${data.code} - enter this in your WhatsApp mobile app under "Link with phone number instead"`);
+      displayPairingCode(data.code, data.phone);
+      addTerminalLog('success', `✔ Pairing code: ${data.code} (Phone: +${data.phone}) - enter this in your WhatsApp mobile app under "Link with phone number instead"`);
     } catch (err) {
       alert('Pairing Code error: ' + err.message);
       addTerminalLog('error', `✖ Pairing Code error: ${err.message}`);
@@ -374,9 +375,12 @@ if (el.btnGetPairingCode && el.pairingPhoneInput) {
   });
 }
 
-function displayPairingCode(code) {
+function displayPairingCode(code, phone = '') {
   if (!code) return;
   if (el.pairingCodeText) el.pairingCodeText.textContent = code;
+  if (el.pairingPhoneDisplay) {
+    el.pairingPhoneDisplay.textContent = phone ? `Phone Number: +${phone}` : '';
+  }
   if (el.pairingCodeCard) el.pairingCodeCard.classList.remove('hidden');
 }
 

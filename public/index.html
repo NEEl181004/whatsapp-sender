@@ -103,7 +103,7 @@
                   </svg>
                 </div>
                 <h3 class="pairing-heading">Login with Phone Number</h3>
-                <p class="pairing-sub text-muted text-xs">Enter your WhatsApp phone number with country code to get an instant 8-digit pairing code.</p>
+                <p class="pairing-sub text-muted text-xs">Enter your WhatsApp phone number with country code (e.g. 91 for India, no spaces or +):</p>
                 
                 <div class="pairing-input-row mt-3">
                   <input type="tel" id="pairingPhoneInput" placeholder="e.g. 919725537047" class="pairing-input">
@@ -111,10 +111,12 @@
                 </div>
 
                 <div id="pairingCodeCard" class="pairing-result-card hidden mt-3">
-                  <span class="pairing-step-hint">Enter this 8-digit code on your WhatsApp mobile app:</span>
+                  <div id="pairingPhoneDisplay" class="text-xs mb-1 font-semibold" style="color: #25D366;"></div>
+                  <span class="pairing-step-hint">Enter this 8-digit code on WhatsApp on your phone:</span>
                   <div class="pairing-digit-box" id="pairingCodeText">---- - ----</div>
                   <button type="button" id="btnCopyPairingCode" class="btn-secondary btn-xs mt-2">📋 Copy Code</button>
                   <p class="text-xs text-muted mt-2">On your phone: WhatsApp &gt; Linked Devices &gt; Link a Device &gt; <strong>Link with phone number instead</strong></p>
+                  <p class="text-xs text-muted mt-1" style="color: #f59e0b;">⚠️ Must match the phone number of the WhatsApp account on your device.</p>
                 </div>
               </div>
             </div>
