@@ -161,8 +161,8 @@
             </div>
           </div>
 
-          <!-- Instructions Card -->
-          <div class="instructions-card">
+          <!-- Instructions Card (Desktop info) -->
+          <div class="instructions-card desktop-only-info">
             <h2 class="card-title">How to link your WhatsApp:</h2>
             <ol class="step-list">
               <li>
@@ -257,8 +257,27 @@
             </div>
           </div>
 
-          <!-- Drag and Drop Box -->
-          <div class="drop-zone" id="contactsDropZone">
+          <!-- Mobile Quick Action Import Bar (Visible on mobile screens) -->
+          <div class="mobile-contacts-actions-bar">
+            <button type="button" class="btn-m-import-phone" id="btnSyncPhoneContactsMobile">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+                <line x1="12" y1="18" x2="12.01" y2="18"></line>
+              </svg>
+              <span>Import Phone Address Book</span>
+            </button>
+            <div class="m-secondary-import-row">
+              <button type="button" class="btn-m-secondary" onclick="document.getElementById('contactsFileInput').click()">
+                📁 Upload CSV / vCard
+              </button>
+              <button type="button" class="btn-m-secondary" id="openPasteModalBtnMobile">
+                📋 Paste Numbers
+              </button>
+            </div>
+          </div>
+
+          <!-- Drag and Drop Box (Desktop) -->
+          <div class="drop-zone desktop-drop-zone" id="contactsDropZone">
             <input type="file" id="contactsFileInput" accept=".csv, .vcf, .xlsx, .xls, .txt" class="hidden-file-input">
             <div class="drop-zone-content">
               <div class="drop-icon">

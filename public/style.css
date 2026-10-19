@@ -1790,7 +1790,7 @@ body {
 .mb-2 { margin-bottom: 8px; }
 
 /* ==========================================================================
-   MOBILE APK & SMARTPHONE DEDICATED STYLES (Bottom Nav & Touch Card Layout)
+   MOBILE APK & SMARTPHONE DEDICATED STYLES (Complete Native App Overhaul)
    ========================================================================== */
 
 .mobile-bottom-nav {
@@ -1801,30 +1801,49 @@ body {
   display: none;
 }
 
+.mobile-contacts-actions-bar {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  /* Prevent horizontal overflow */
+  /* Prevent horizontal overflow and enable smooth touch scrolling */
   html, body {
     overflow-x: hidden;
+    background-color: #0b141a;
+    color: #e9edef;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
 
   .app-layout {
-    padding: 10px 12px 84px 12px;
+    padding: 8px 10px 84px 10px;
     max-width: 100vw;
   }
 
-  /* Compact Native-style Mobile Header */
+  /* Compact Native-style Mobile App Header */
   .app-header {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 14px;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
     border-radius: 14px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
+    background: rgba(17, 27, 33, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  .brand {
+    gap: 10px;
+  }
+
+  .brand-icon {
+    width: 34px;
+    height: 34px;
   }
 
   .brand-title {
-    font-size: 1.05rem;
+    font-size: 1rem;
+    font-weight: 700;
   }
 
   .brand-subtitle {
@@ -1833,7 +1852,6 @@ body {
 
   .header-status {
     gap: 6px;
-    flex-wrap: wrap;
   }
 
   #btnDownloadApkHeader, #btnMobileAccess {
@@ -1841,8 +1859,8 @@ body {
   }
 
   .status-pill {
-    padding: 4px 10px;
-    font-size: 0.75rem;
+    padding: 4px 8px;
+    font-size: 0.72rem;
   }
 
   /* Hide bulky desktop tab bar on phone */
@@ -1850,7 +1868,42 @@ body {
     display: none !important;
   }
 
-  /* Show native mobile bottom navigation bar */
+  /* Hide desktop-only elements on mobile */
+  .desktop-only-info {
+    display: none !important;
+  }
+
+  .desktop-drop-zone {
+    display: none !important;
+  }
+
+  .desktop-only-table {
+    display: none !important;
+  }
+
+  /* Hide the fake desktop phone mockup in composer on mobile */
+  .mockup-container {
+    display: none !important;
+  }
+
+  .card-desc {
+    display: none;
+  }
+
+  .card-header-bar {
+    margin-bottom: 10px;
+  }
+
+  .country-prefix-box {
+    width: 100%;
+    margin-top: 6px;
+  }
+
+  .country-prefix-box label {
+    font-size: 0.75rem;
+  }
+
+  /* Native Mobile Bottom Navigation Bar */
   .mobile-bottom-nav {
     display: flex;
     position: fixed;
@@ -1858,15 +1911,15 @@ body {
     left: 0;
     right: 0;
     height: 64px;
-    background: rgba(15, 23, 42, 0.94);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: rgba(11, 20, 26, 0.96);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 9999;
-    padding: 4px 8px calc(4px + env(safe-area-inset-bottom, 0px)) 8px;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px)) 6px;
     justify-content: space-around;
     align-items: center;
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 -4px 25px rgba(0, 0, 0, 0.7);
   }
 
   .m-nav-item {
@@ -1877,8 +1930,8 @@ body {
     justify-content: center;
     background: transparent;
     border: none;
-    color: #94a3b8;
-    padding: 6px 4px;
+    color: #8696a0;
+    padding: 6px 2px;
     border-radius: 12px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1888,7 +1941,7 @@ body {
   }
 
   .m-nav-item.active {
-    color: #25d366;
+    color: #00a884;
   }
 
   .m-nav-icon-wrap {
@@ -1899,13 +1952,13 @@ body {
   }
 
   .m-nav-item.active .m-nav-icon-wrap svg {
-    stroke: #25d366;
-    transform: scale(1.08);
+    stroke: #00a884;
+    transform: scale(1.1);
     transition: transform 0.2s ease;
   }
 
   .m-nav-label {
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 600;
     letter-spacing: 0.2px;
   }
@@ -1914,7 +1967,7 @@ body {
     position: absolute;
     top: -4px;
     right: -10px;
-    background: #10b981;
+    background: #00a884;
     color: #ffffff;
     font-size: 0.62rem;
     font-weight: 700;
@@ -1935,7 +1988,7 @@ body {
   }
 
   .m-nav-dot.connected {
-    background: #10b981;
+    background: #00a884;
   }
 
   .m-nav-dot.active-dot {
@@ -1946,26 +1999,180 @@ body {
   /* Single Column Full Width Layouts */
   .connect-grid, .composer-grid, .campaign-settings-grid {
     grid-template-columns: 1fr !important;
-    gap: 16px !important;
+    gap: 12px !important;
   }
 
   .panel-card {
-    padding: 16px !important;
+    padding: 14px !important;
     border-radius: 16px !important;
+    background: #111b21 !important;
+    border: 1px solid #202c33 !important;
   }
 
-  /* Hide Desktop Table on Phones */
-  .desktop-only-table {
-    display: none !important;
-  }
-
-  /* Mobile Touch-Friendly Contact Cards */
-  .mobile-contacts-list {
+  /* ================= TAB 1: CONNECT SCREEN MOBILE ================= */
+  .login-mode-tabs {
     display: flex;
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 12px;
+    padding: 4px;
+    margin-bottom: 14px;
+    gap: 4px;
+  }
+
+  .login-mode-tab {
+    flex: 1;
+    border-radius: 8px;
+    padding: 10px 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-align: center;
+    border: none;
+    color: #8696a0;
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .login-mode-tab.active {
+    background: #00a884;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(0, 168, 132, 0.35);
+  }
+
+  .pairing-box-content {
+    padding: 16px 10px;
+    text-align: center;
+  }
+
+  .pairing-heading {
+    font-size: 1.15rem;
+    margin-bottom: 4px;
+  }
+
+  .pairing-input-row {
     flex-direction: column;
     gap: 10px;
     margin-top: 14px;
-    max-height: 58vh;
+  }
+
+  .pairing-input {
+    width: 100%;
+    height: 48px;
+    font-size: 1.1rem !important;
+    text-align: center;
+    letter-spacing: 1px;
+    border-radius: 12px;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+    color: #e9edef;
+  }
+
+  #btnGetPairingCode {
+    width: 100%;
+    height: 48px;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #00a884, #059669);
+    box-shadow: 0 4px 14px rgba(0, 168, 132, 0.35);
+  }
+
+  .pairing-digit-box {
+    font-size: 2rem;
+    letter-spacing: 5px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: rgba(0, 168, 132, 0.08);
+    border: 2px dashed #00a884;
+    color: #25d366;
+    margin: 10px 0;
+  }
+
+  .connected-card {
+    padding: 24px 14px;
+    text-align: center;
+  }
+
+  /* ================= TAB 2: CONTACTS SCREEN MOBILE ================= */
+  .mobile-contacts-actions-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 10px 0 14px 0;
+  }
+
+  .btn-m-import-phone {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 50px;
+    width: 100%;
+    border-radius: 14px;
+    border: none;
+    background: linear-gradient(135deg, #00a884, #059669);
+    color: #ffffff;
+    font-size: 0.98rem;
+    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(0, 168, 132, 0.35);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .btn-m-import-phone:active {
+    transform: scale(0.98);
+  }
+
+  .m-secondary-import-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .btn-m-secondary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 42px;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+    color: #d1d5db;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .table-header-controls {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .table-stats {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .search-input-wrap {
+    width: 100%;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+    border-radius: 12px;
+    height: 42px;
+    padding: 0 12px;
+  }
+
+  /* Mobile Touch Contact Cards */
+  .mobile-contacts-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+    max-height: 55vh;
     overflow-y: auto;
     padding-right: 2px;
     -webkit-overflow-scrolling: touch;
@@ -1975,16 +2182,16 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
-    background: rgba(30, 41, 59, 0.7);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #1f2c34;
+    border: 1px solid #2a3942;
     border-radius: 14px;
-    padding: 12px 14px;
+    padding: 10px 12px;
     transition: background 0.15s ease, border-color 0.15s ease;
   }
 
   .m-contact-card.selected {
-    border-color: rgba(37, 211, 102, 0.4);
-    background: rgba(37, 211, 102, 0.06);
+    border-color: rgba(0, 168, 132, 0.5);
+    background: rgba(0, 168, 132, 0.08);
   }
 
   .m-checkbox-wrap {
@@ -1993,25 +2200,25 @@ body {
   }
 
   .m-checkbox-wrap input[type="checkbox"] {
-    width: 20px;
-    height: 20px;
-    accent-color: #25d366;
+    width: 22px;
+    height: 22px;
+    accent-color: #00a884;
     cursor: pointer;
   }
 
   .m-avatar {
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #10b981, #047857);
+    background: linear-gradient(135deg, #00a884, #059669);
     color: #fff;
     font-weight: 700;
-    font-size: 0.88rem;
+    font-size: 0.85rem;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
   }
 
   .m-info {
@@ -2027,9 +2234,9 @@ body {
   }
 
   .m-name {
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 700;
-    color: #f1f5f9;
+    color: #e9edef;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2038,46 +2245,33 @@ body {
   .m-btn-edit-name {
     background: transparent;
     border: none;
-    color: #94a3b8;
+    color: #8696a0;
     cursor: pointer;
     padding: 2px;
     display: inline-flex;
     align-items: center;
   }
 
-  .m-btn-edit-name:hover {
-    color: #25d366;
-  }
-
   .m-phone-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 0.78rem;
-    color: #38bdf8;
-    background: rgba(56, 189, 248, 0.1);
-    padding: 2px 8px;
+    font-size: 0.75rem;
+    color: #53bdeb;
+    background: rgba(83, 189, 235, 0.1);
+    padding: 1px 6px;
     border-radius: 6px;
     font-family: var(--font-mono);
-  }
-
-  .m-status-badge {
-    display: inline-block;
-    font-size: 0.7rem;
-    padding: 1px 6px;
-    border-radius: 4px;
-    margin-left: 6px;
   }
 
   .m-card-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
   }
 
   .m-btn-del {
     background: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.25);
+    border: 1px solid rgba(239, 68, 68, 0.2);
     color: #f87171;
     width: 32px;
     height: 32px;
@@ -2088,64 +2282,120 @@ body {
     cursor: pointer;
   }
 
-  /* Mobile Touch Form Controls */
+  /* ================= TAB 3: COMPOSER SCREEN MOBILE ================= */
+  .tag-chips {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    gap: 6px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tag-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tag-chip {
+    white-space: nowrap;
+    font-size: 0.8rem;
+    padding: 6px 12px;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+    border-radius: 10px;
+    color: #00a884;
+    font-weight: 600;
+  }
+
+  .custom-textarea {
+    font-size: 16px !important;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+    border-radius: 14px;
+    padding: 12px;
+    color: #e9edef;
+  }
+
+  .media-drop-zone {
+    padding: 16px 10px;
+    border-radius: 14px;
+  }
+
+  .media-list-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  /* ================= TAB 4: CAMPAIGN SCREEN MOBILE ================= */
+  .settings-box, .test-send-box {
+    padding: 14px !important;
+    border-radius: 14px !important;
+    background: #1f2c34 !important;
+    border: 1px solid #2a3942 !important;
+  }
+
+  .speed-presets {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .btn-preset {
+    font-size: 0.76rem !important;
+    padding: 8px 4px !important;
+    text-align: center;
+  }
+
+  .summary-stats {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  #startCampaignBtn {
+    height: 52px;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #00a884, #059669);
+    box-shadow: 0 4px 20px rgba(0, 168, 132, 0.45);
+    width: 100%;
+  }
+
+  .progress-metrics {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .metric-card {
+    padding: 12px 10px;
+    border-radius: 12px;
+    background: #1f2c34;
+    border: 1px solid #2a3942;
+  }
+
+  .metric-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+  }
+
+  .terminal-box {
+    border-radius: 14px;
+    background: #0b141a;
+  }
+
+  .terminal-body {
+    max-height: 180px;
+    font-size: 0.72rem;
+  }
+
+  /* Input zoom fix */
   input, textarea, select {
-    font-size: 16px !important; /* Prevents auto-zoom on mobile browsers */
+    font-size: 16px !important;
   }
 
   .btn-primary, .btn-secondary, .btn-ghost {
     min-height: 44px;
-    font-size: 0.92rem;
-  }
-
-  .drop-zone {
-    padding: 20px 14px;
-  }
-
-  .drop-buttons {
-    flex-direction: column;
-    width: 100%;
-    gap: 8px;
-  }
-
-  .drop-buttons button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .table-header-controls {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .table-actions {
-    flex-direction: column;
-  }
-
-  .search-input-wrap {
-    width: 100%;
-  }
-
-  /* Pairing / QR Box */
-  .qr-box-container {
-    padding: 14px;
-  }
-
-  .pairing-box-content {
-    padding: 16px 12px;
-  }
-
-  .pairing-code-badge {
-    font-size: 1.7rem;
-    letter-spacing: 4px;
-    padding: 10px 16px;
-  }
-
-  /* Campaign Progress Metrics on Mobile */
-  .progress-metrics {
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
   }
 }
+
 

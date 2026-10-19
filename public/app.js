@@ -626,6 +626,16 @@ if (btnSyncPhoneContacts) {
       btnSyncPhoneContacts.innerHTML = oldText;
     }
   });
+
+  const btnSyncPhoneContactsMobile = document.getElementById('btnSyncPhoneContactsMobile');
+  if (btnSyncPhoneContactsMobile) {
+    btnSyncPhoneContactsMobile.addEventListener('click', () => btnSyncPhoneContacts.click());
+  }
+}
+
+const openPasteModalBtnMobile = document.getElementById('openPasteModalBtnMobile');
+if (openPasteModalBtnMobile && el.openPasteModalBtn) {
+  openPasteModalBtnMobile.addEventListener('click', () => el.openPasteModalBtn.click());
 }
 
 

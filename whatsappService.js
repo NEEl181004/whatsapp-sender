@@ -463,18 +463,27 @@ export class WhatsAppSession extends EventEmitter {
     try {
       const files = await fs.promises.readdir(this.authFolder);
       const now = Date.now();
-      const MAX_AGE_MS = 2 * 60 * 60 * 1000;
+      const MAX_PREKEY_AGE = 15 * 60 * 1000; // 15 mins
+      const MAX_SESSION_AGE = 30 * 60 * 1000; // 30 mins
 
       for (const file of files) {
-        if (file === 'creds.json') continue;
+        // Critical: Never delete creds.json or app-state-sync-key
+        if (file === 'creds.json' || file.startsWith('app-state-sync-key')) continue;
 
         let shouldDelete = false;
         if (recipientDigits && file.includes(recipientDigits)) {
           shouldDelete = true;
-        } else if (file.startsWith('sender-key-') || file.startsWith('tctoken-')) {
+        } else if (file.startsWith('session-') || file.startsWith('sender-key-') || file.startsWith('tctoken-')) {
           try {
             const stats = await fs.promises.stat(path.join(this.authFolder, file));
-            if (now - stats.mtimeMs > MAX_AGE_MS) {
+            if (now - stats.mtimeMs > MAX_SESSION_AGE) {
+              shouldDelete = true;
+            }
+          } catch (_) {}
+        } else if (file.startsWith('pre-key-')) {
+          try {
+            const stats = await fs.promises.stat(path.join(this.authFolder, file));
+            if (now - stats.mtimeMs > MAX_PREKEY_AGE) {
               shouldDelete = true;
             }
           } catch (_) {}
@@ -498,7 +507,23 @@ class SessionManager extends EventEmitter {
     if (!fs.existsSync(SESSIONS_BASE_DIR)) {
       fs.mkdirSync(SESSIONS_BASE_DIR, { recursive: true });
     }
-    this.migrateLegacySession();
+    this.cleanRootAuthFolder();
+    // Recurring root cleanup every 30 minutes
+    setInterval(() => this.cleanRootAuthFolder(), 30 * 60 * 1000);
+  }
+
+  cleanRootAuthFolder() {
+    const rootDir = path.resolve(process.cwd(), 'auth_info_baileys');
+    if (!fs.existsSync(rootDir)) return;
+    try {
+      const entries = fs.readdirSync(rootDir);
+      for (const entry of entries) {
+        const fullPath = path.join(rootDir, entry);
+        if (entry !== 'sessions' && fs.statSync(fullPath).isFile() && entry.endsWith('.json')) {
+          try { fs.unlinkSync(fullPath); } catch (_) {}
+        }
+      }
+    } catch (_) {}
   }
 
   migrateLegacySession() {
