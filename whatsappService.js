@@ -156,8 +156,9 @@ export class WhatsAppSession extends EventEmitter {
     }
 
     if (!this.sock || this.status === 'disconnected') {
+      // Ensure no stale credentials interfere with pairing code generation
+      await this.clearAuthFolder();
       await this.init();
-      await new Promise((r) => setTimeout(r, 1000));
     }
 
     if (this.status === 'connected') {
