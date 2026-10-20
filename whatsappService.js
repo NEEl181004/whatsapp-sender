@@ -45,7 +45,16 @@ export class WhatsAppSession extends EventEmitter {
   async init() {
     try {
       this.status = 'connecting';
-      this.emit('status', { status: this.status, sessionId: this.sessionId });
+      this.emit('status', { status: this.status, hasSavedCredentials: this.hasSavedCredentials(), sessionId: this.sessionId });
+
+      // Cleanly terminate previous socket instance before opening a new one to prevent 440 conflict / replaced
+      if (this.sock) {
+        try {
+          this.sock.ev.removeAllListeners();
+          this.sock.end(undefined);
+        } catch (_) {}
+        this.sock = null;
+      }
 
       if (!fs.existsSync(this.authFolder)) {
         fs.mkdirSync(this.authFolder, { recursive: true });
@@ -84,7 +93,10 @@ export class WhatsAppSession extends EventEmitter {
         markOnlineOnConnect: true,
         connectTimeoutMs: 60000,
         defaultQueryTimeoutMs: 60000,
-        keepAliveIntervalMs: 30000
+        keepAliveIntervalMs: 25000,
+        retryRequestDelayMs: 250,
+        maxMsgRetryCount: 5,
+        getMessage: async () => ({ conversation: '' })
       });
 
       this.sock.ev.on('creds.update', saveCreds);
@@ -97,7 +109,7 @@ export class WhatsAppSession extends EventEmitter {
             this.status = 'qr_ready';
             this.qrCodeDataUrl = await QRCode.toDataURL(qr, { margin: 2, scale: 7 });
             this.emit('qr', { qrDataUrl: this.qrCodeDataUrl, sessionId: this.sessionId });
-            this.emit('status', { status: this.status, qrDataUrl: this.qrCodeDataUrl, sessionId: this.sessionId });
+            this.emit('status', { status: this.status, qrDataUrl: this.qrCodeDataUrl, hasSavedCredentials: false, sessionId: this.sessionId });
           } catch (qrErr) {
             console.error(`[Baileys ${this.sessionId}] QR Generation Error:`, qrErr);
           }
@@ -105,23 +117,26 @@ export class WhatsAppSession extends EventEmitter {
 
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
-          const isLoggedOut = statusCode === DisconnectReason.loggedOut || statusCode === 401;
-          const shouldReconnect = !this.isExplicitLogout && (!isLoggedOut || !this.hasSavedCredentials());
+          const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+          const isLoggedOut = (statusCode === DisconnectReason.loggedOut || statusCode === 401) && this.hasSavedCredentials();
+          const shouldReconnect = !this.isExplicitLogout && !isLoggedOut;
 
-          console.log(`[WhatsApp ${this.sessionId}] connection closed (${statusCode}). Reconnecting: ${shouldReconnect}`);
+          console.log(`[WhatsApp ${this.sessionId}] Connection closed (${statusCode}). Should reconnect: ${shouldReconnect}`);
 
-          if (this.isExplicitLogout || (this.hasSavedCredentials() && isLoggedOut)) {
+          if (this.isExplicitLogout || isLoggedOut) {
             this.status = 'disconnected';
             this.userInfo = null;
             this.accountPhone = null;
             this.qrCodeDataUrl = null;
-            this.emit('status', { status: this.status, sessionId: this.sessionId });
+            this.emit('status', { status: this.status, hasSavedCredentials: false, sessionId: this.sessionId });
             await this.clearAuthFolder();
           } else if (shouldReconnect) {
             this.status = 'connecting';
-            this.emit('status', { status: this.status, sessionId: this.sessionId });
+            this.emit('status', { status: this.status, hasSavedCredentials: this.hasSavedCredentials(), sessionId: this.sessionId });
             if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = setTimeout(() => this.init(), 2000);
+            // Reconnect immediately on 515 (restartRequired) so mobile linking progress bar does not timeout
+            const reconnectDelay = isRestartRequired ? 300 : 2000;
+            this.reconnectTimer = setTimeout(() => this.init(), reconnectDelay);
           }
         } else if (connection === 'open') {
           this.status = 'connected';
@@ -242,6 +257,7 @@ export class WhatsAppSession extends EventEmitter {
     return {
       sessionId: this.sessionId,
       status: this.status,
+      hasSavedCredentials: this.hasSavedCredentials(),
       qrDataUrl: this.qrCodeDataUrl,
       user: this.userInfo,
       accountPhone: this.accountPhone
@@ -269,9 +285,7 @@ export class WhatsAppSession extends EventEmitter {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
     }
-    const result = await this.sock.sendMessage(jid, { text });
-    setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
-    return result;
+    return await this.sock.sendMessage(jid, { text });
   }
 
   async sendVideoMessage(jid, videoPath, caption = '', mimetype = 'video/mp4', originalName = '') {
@@ -284,23 +298,19 @@ export class WhatsAppSession extends EventEmitter {
 
     const fileName = originalName || path.basename(videoPath);
     try {
-      const result = await this.sock.sendMessage(jid, {
+      return await this.sock.sendMessage(jid, {
         video: { url: videoPath },
         caption: caption || '',
         mimetype: mimetype || 'video/mp4',
         fileName
       });
-      setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
-      return result;
     } catch (videoErr) {
-      const result = await this.sock.sendMessage(jid, {
+      return await this.sock.sendMessage(jid, {
         document: { url: videoPath },
         mimetype: mimetype || 'video/mp4',
         fileName,
         caption: caption || ''
       });
-      setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
-      return result;
     }
   }
 
@@ -312,13 +322,11 @@ export class WhatsAppSession extends EventEmitter {
       throw new Error(`Image file not found at ${imagePath}`);
     }
 
-    const result = await this.sock.sendMessage(jid, {
+    return await this.sock.sendMessage(jid, {
       image: { url: imagePath },
       caption: caption || '',
       mimetype: mimetype || 'image/jpeg'
     });
-    setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
-    return result;
   }
 
   async prepareMediaBundle(mediaFiles = []) {
@@ -449,7 +457,6 @@ export class WhatsAppSession extends EventEmitter {
       }
     }
 
-    setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
     return results;
   }
 
@@ -477,46 +484,13 @@ export class WhatsAppSession extends EventEmitter {
       }
     }
 
-    setTimeout(() => this.cleanupAuthFiles(jid.split('@')[0]), 1500);
     return results;
   }
 
-  async cleanupAuthFiles(recipientDigits = '') {
-    if (!fs.existsSync(this.authFolder)) return;
-    try {
-      const files = await fs.promises.readdir(this.authFolder);
-      const now = Date.now();
-      const MAX_PREKEY_AGE = 15 * 60 * 1000; // 15 mins
-      const MAX_SESSION_AGE = 30 * 60 * 1000; // 30 mins
-
-      for (const file of files) {
-        // Critical: Never delete creds.json or app-state-sync-key
-        if (file === 'creds.json' || file.startsWith('app-state-sync-key')) continue;
-
-        let shouldDelete = false;
-        if (recipientDigits && file.includes(recipientDigits)) {
-          shouldDelete = true;
-        } else if (file.startsWith('session-') || file.startsWith('sender-key-') || file.startsWith('tctoken-')) {
-          try {
-            const stats = await fs.promises.stat(path.join(this.authFolder, file));
-            if (now - stats.mtimeMs > MAX_SESSION_AGE) {
-              shouldDelete = true;
-            }
-          } catch (_) {}
-        } else if (file.startsWith('pre-key-')) {
-          try {
-            const stats = await fs.promises.stat(path.join(this.authFolder, file));
-            if (now - stats.mtimeMs > MAX_PREKEY_AGE) {
-              shouldDelete = true;
-            }
-          } catch (_) {}
-        }
-
-        if (shouldDelete) {
-          await fs.promises.unlink(path.join(this.authFolder, file)).catch(() => {});
-        }
-      }
-    } catch (_) {}
+  async cleanupAuthFiles() {
+    // Non-destructive: preserving active Signal session and pre-key files
+    // to maintain the ratchet cipher state. Deleting these causes disconnects after 15-20 messages.
+    return;
   }
 }
 

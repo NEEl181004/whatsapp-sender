@@ -2,11 +2,36 @@
 
 // Persistent Device ID for multi-device & multi-instance isolation
 function getOrCreateDeviceId() {
+  // 1. Android APK native bridge: stable hardware/installation ID that survives cache clears
+  if (window.AndroidNative && typeof window.AndroidNative.getDeviceId === 'function') {
+    try {
+      const nativeId = window.AndroidNative.getDeviceId();
+      if (nativeId) {
+        localStorage.setItem('wa_device_id', nativeId);
+        document.cookie = `wa_device_id=${nativeId}; path=/; max-age=31536000; SameSite=Lax`;
+        return nativeId;
+      }
+    } catch (_) {}
+  }
+
+  // 2. LocalStorage
   let devId = localStorage.getItem('wa_device_id');
+
+  // 3. Persistent Cookie backup (survives cache clear)
+  if (!devId) {
+    const match = document.cookie.match(/(?:^|;\s*)wa_device_id=([^;]+)/);
+    if (match && match[1]) {
+      devId = match[1];
+    }
+  }
+
+  // 4. Generate new ID if first time
   if (!devId) {
     devId = 'dev_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
-    localStorage.setItem('wa_device_id', devId);
   }
+
+  localStorage.setItem('wa_device_id', devId);
+  document.cookie = `wa_device_id=${devId}; path=/; max-age=31536000; SameSite=Lax`;
   return devId;
 }
 const deviceId = getOrCreateDeviceId();
@@ -69,6 +94,7 @@ const el = {
   qrLoading: document.getElementById('qrLoading'),
   qrDisplay: document.getElementById('qrDisplay'),
   qrImage: document.getElementById('qrImage'),
+  restoringModeView: document.getElementById('restoringModeView'),
   connectedCard: document.getElementById('connectedCard'),
   connectedUserName: document.getElementById('connectedUserName'),
   connectedUserPhone: document.getElementById('connectedUserPhone'),
@@ -215,30 +241,51 @@ function updateWhatsAppUI(data) {
   if (data.status === 'connected') {
     state.user = data.user;
     showConnectedUI(data.user);
+  } else if (data.hasSavedCredentials && data.status !== 'connected') {
+    // Session is already saved on server: reconnecting automatically. Never show login inputs!
+    showRestoringUI(data);
   } else if (data.status === 'qr_ready' && data.qrDataUrl) {
     showQRCode(data.qrDataUrl);
   } else {
-    // connecting or disconnected
-    el.connectionPill.className = 'status-pill status-disconnected';
-    el.connectionText.textContent = data.status === 'connecting' ? 'Connecting...' : 'Disconnected';
-    el.logoutBtn.classList.add('hidden');
+    showLoginInputsUI(data);
+  }
+}
 
-    const loginModeTabs = document.getElementById('loginModeTabs');
-    if (loginModeTabs) loginModeTabs.classList.remove('hidden');
+function showRestoringUI(data) {
+  const loginModeTabs = document.getElementById('loginModeTabs');
+  if (loginModeTabs) loginModeTabs.classList.add('hidden');
+  if (el.pairingModeView) el.pairingModeView.classList.add('hidden');
+  if (el.qrModeView) el.qrModeView.classList.add('hidden');
+  if (el.connectedCard) el.connectedCard.classList.add('hidden');
+  if (el.restoringModeView) el.restoringModeView.classList.remove('hidden');
 
-    el.connectedCard.classList.add('hidden');
-    if (el.btnModePairing && el.btnModePairing.classList.contains('active')) {
-      if (el.pairingModeView) el.pairingModeView.classList.remove('hidden');
-      if (el.qrModeView) el.qrModeView.classList.add('hidden');
-    } else {
-      if (el.qrModeView) el.qrModeView.classList.remove('hidden');
-      if (el.qrDisplay) el.qrDisplay.classList.add('hidden');
-      if (el.qrLoading) el.qrLoading.classList.remove('hidden');
-    }
+  el.connectionPill.className = 'status-pill status-connecting';
+  el.connectionText.textContent = 'Reconnecting WhatsApp...';
+  el.logoutBtn.classList.add('hidden');
+}
+
+function showLoginInputsUI(data) {
+  if (el.restoringModeView) el.restoringModeView.classList.add('hidden');
+  el.connectionPill.className = 'status-pill status-disconnected';
+  el.connectionText.textContent = data.status === 'connecting' ? 'Connecting...' : 'Disconnected';
+  el.logoutBtn.classList.add('hidden');
+
+  const loginModeTabs = document.getElementById('loginModeTabs');
+  if (loginModeTabs) loginModeTabs.classList.remove('hidden');
+
+  el.connectedCard.classList.add('hidden');
+  if (el.btnModePairing && el.btnModePairing.classList.contains('active')) {
+    if (el.pairingModeView) el.pairingModeView.classList.remove('hidden');
+    if (el.qrModeView) el.qrModeView.classList.add('hidden');
+  } else {
+    if (el.qrModeView) el.qrModeView.classList.remove('hidden');
+    if (el.qrDisplay) el.qrDisplay.classList.add('hidden');
+    if (el.qrLoading) el.qrLoading.classList.remove('hidden');
   }
 }
 
 function showQRCode(qrDataUrl) {
+  if (el.restoringModeView) el.restoringModeView.classList.add('hidden');
   el.qrLoading.classList.add('hidden');
   el.connectedCard.classList.add('hidden');
   el.qrDisplay.classList.remove('hidden');
@@ -253,6 +300,7 @@ function showQRCode(qrDataUrl) {
 }
 
 function showConnectedUI(user) {
+  if (el.restoringModeView) el.restoringModeView.classList.add('hidden');
   const loginModeTabs = document.getElementById('loginModeTabs');
   if (loginModeTabs) loginModeTabs.classList.add('hidden');
   if (el.pairingModeView) el.pairingModeView.classList.add('hidden');

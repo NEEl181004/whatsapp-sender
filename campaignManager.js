@@ -166,9 +166,6 @@ export class CampaignManager extends EventEmitter {
             this.currentCampaign.sentCount++;
             contactsDb.updateStatus(contact.digits, 'Sent', 'Delivered', this.accountKey);
 
-            // Clean recipient-specific json files from auth folder to prevent disk bloat
-            this.session.cleanupAuthFiles(contact.digits).catch(() => {});
-
             this.addLog('success', `✔ Delivered to ${contact.name} (${contact.phone})`);
             this.currentCampaign.report.push({
               name: contact.name,
@@ -216,7 +213,6 @@ export class CampaignManager extends EventEmitter {
       } finally {
         this.isRunning = false;
         this.isPaused = false;
-        this.session.cleanupAuthFiles().catch(() => {});
 
         // Automatically delete uploaded media files from disk once message has been sent to users
         try {

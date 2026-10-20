@@ -355,6 +355,21 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getDeviceId() {
+            String deviceId = prefs.getString("wa_permanent_device_id", null);
+            if (deviceId == null) {
+                String androidId = android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+                if (androidId != null && !androidId.trim().isEmpty() && !androidId.equals("9774d56d682e549c")) {
+                    deviceId = "apk_" + androidId;
+                } else {
+                    deviceId = "apk_" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+                }
+                prefs.edit().putString("wa_permanent_device_id", deviceId).apply();
+            }
+            return deviceId;
+        }
+
+        @JavascriptInterface
         public String getDeviceContacts() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 if (checkSelfPermission("android.permission.READ_CONTACTS") != PackageManager.PERMISSION_GRANTED) {
