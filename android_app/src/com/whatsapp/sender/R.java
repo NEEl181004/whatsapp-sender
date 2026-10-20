@@ -10,12 +10,13 @@ package com.whatsapp.sender;
 public final class R {
   public static final class id {
     public static final int btnAutoDetect=0x7f010000;
-    public static final int btnConnect=0x7f010001;
-    public static final int btnToggleSettings=0x7f010002;
-    public static final int connectionDialog=0x7f010003;
-    public static final int etServerUrl=0x7f010004;
-    public static final int tvStatusMsg=0x7f010005;
-    public static final int webView=0x7f010006;
+    public static final int btnCloud=0x7f010001;
+    public static final int btnConnect=0x7f010002;
+    public static final int btnToggleSettings=0x7f010003;
+    public static final int connectionDialog=0x7f010004;
+    public static final int etServerUrl=0x7f010005;
+    public static final int tvStatusMsg=0x7f010006;
+    public static final int webView=0x7f010007;
   }
   public static final class layout {
     public static final int activity_main=0x7f020000;

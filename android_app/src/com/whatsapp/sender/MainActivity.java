@@ -50,6 +50,7 @@ public class MainActivity extends Activity {
     private TextView tvStatusMsg;
     private Button btnConnect;
     private Button btnAutoDetect;
+    private Button btnCloud;
     private ImageButton btnToggleSettings;
 
     private ValueCallback<Uri[]> uploadMessageCallback;
@@ -70,6 +71,7 @@ public class MainActivity extends Activity {
         tvStatusMsg = (TextView) findViewById(R.id.tvStatusMsg);
         btnConnect = (Button) findViewById(R.id.btnConnect);
         btnAutoDetect = (Button) findViewById(R.id.btnAutoDetect);
+        btnCloud = (Button) findViewById(R.id.btnCloud);
         btnToggleSettings = (ImageButton) findViewById(R.id.btnToggleSettings);
 
         setupWebView();
@@ -77,8 +79,14 @@ public class MainActivity extends Activity {
         requestAppPermissions();
 
         String currentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL);
-        // Automatically migrate to live cloud Render URL if previously pointing to a local IP
-        if (currentUrl.contains("172.") || currentUrl.contains("192.168.") || currentUrl.contains("localhost")) {
+        // Enforce cloud Render URL: If previously pointing to 127.0.0.1, localhost, or local IP, immediately migrate to Render
+        if (currentUrl == null || 
+            currentUrl.contains("127.0.0.1") || 
+            currentUrl.contains("localhost") || 
+            currentUrl.contains("192.168.") || 
+            currentUrl.contains("10.") || 
+            currentUrl.contains("172.") || 
+            !currentUrl.startsWith("https://")) {
             currentUrl = DEFAULT_SERVER_URL;
             prefs.edit().putString(KEY_SERVER_URL, currentUrl).apply();
         }
@@ -158,6 +166,18 @@ public class MainActivity extends Activity {
     }
 
     private void setupControls() {
+        if (btnCloud != null) {
+            btnCloud.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    etServerUrl.setText(DEFAULT_SERVER_URL);
+                    prefs.edit().putString(KEY_SERVER_URL, DEFAULT_SERVER_URL).apply();
+                    connectionDialog.setVisibility(View.GONE);
+                    loadServerUrl(DEFAULT_SERVER_URL);
+                }
+            });
+        }
+
         btnConnect.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -194,7 +214,7 @@ public class MainActivity extends Activity {
                 } else {
                     String currentUrl = prefs.getString(KEY_SERVER_URL, DEFAULT_SERVER_URL);
                     etServerUrl.setText(currentUrl);
-                    tvStatusMsg.setText("Enter or change your PC's IP address below:");
+                    tvStatusMsg.setText("Server Connection Settings:");
                     connectionDialog.setVisibility(View.VISIBLE);
                 }
             }
@@ -202,10 +222,18 @@ public class MainActivity extends Activity {
     }
 
     private void handleConnectionFailure(String failingUrl, String details) {
+        // If it failed because of 127.0.0.1 or localhost, immediately auto-switch to Render cloud!
+        if (failingUrl != null && (failingUrl.contains("127.0.0.1") || failingUrl.contains("localhost"))) {
+            prefs.edit().putString(KEY_SERVER_URL, DEFAULT_SERVER_URL).apply();
+            etServerUrl.setText(DEFAULT_SERVER_URL);
+            loadServerUrl(DEFAULT_SERVER_URL);
+            return;
+        }
+
         isErrorState = true;
         // Load blank page to avoid standard white Android error page
         webView.loadUrl("about:blank");
-        tvStatusMsg.setText("Could not reach " + failingUrl + "\n(" + details + ")\n\nPlease verify your PC IP address below:");
+        tvStatusMsg.setText("Could not reach " + failingUrl + "\n(" + details + ")\n\nTap 'Connect to Render Cloud' below:");
         connectionDialog.setVisibility(View.VISIBLE);
     }
 

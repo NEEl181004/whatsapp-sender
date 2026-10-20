@@ -110,14 +110,37 @@ export function getLocalIpAddress() {
 }
 
 // === Network Info Endpoint (Mobile Access URL) ===
-app.get('/api/network-info', (req, res) => {
-  const ip = getLocalIpAddress();
+app.get('/api/network-info', async (req, res) => {
+  const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+  const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+  const isCloud = host && (host.includes('onrender.com') || host.includes('railway.app') || (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('192.168.')));
+
+  let publicUrl;
+  if (isCloud) {
+    publicUrl = `${protocol}://${host}`;
+  } else {
+    const ip = getLocalIpAddress();
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+      publicUrl = `http://${ip}:${PORT}`;
+    } else {
+      publicUrl = 'https://whatsapp-sender-hx4d.onrender.com';
+    }
+  }
+
+  let qrDataUrl = null;
+  try {
+    const QRCode = (await import('qrcode')).default;
+    qrDataUrl = await QRCode.toDataURL(publicUrl, { margin: 2, scale: 6 });
+  } catch (_) {}
+
   res.json({
     port: PORT,
     localUrl: `http://localhost:${PORT}`,
-    mobileUrl: `http://${ip}:${PORT}`,
-    ip,
-    apkDownloadUrl: `http://${ip}:${PORT}/WhatsApp-Sender.apk`
+    mobileUrl: publicUrl,
+    cloudUrl: 'https://whatsapp-sender-hx4d.onrender.com',
+    qrDataUrl,
+    ip: isCloud ? host : getLocalIpAddress(),
+    apkDownloadUrl: `${publicUrl}/WhatsApp-Sender.apk`
   });
 });
 
