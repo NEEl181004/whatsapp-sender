@@ -552,7 +552,10 @@ app.post('/api/campaign/start', async (req, res) => {
       videoOriginalName,
       videoCaptionTemplate,
       minDelay,
-      maxDelay
+      maxDelay,
+      simulateTyping,
+      batchSize,
+      batchRestSec
     } = req.body;
 
     const resolvedMedia = [];
@@ -584,7 +587,10 @@ app.post('/api/campaign/start', async (req, res) => {
       videoOriginalName: videoOriginalName || '',
       videoCaptionTemplate,
       minDelay,
-      maxDelay
+      maxDelay,
+      simulateTyping: simulateTyping !== false,
+      batchSize: batchSize !== undefined ? Number(batchSize) : 20,
+      batchRestSec: batchRestSec !== undefined ? Number(batchRestSec) : 120
     });
 
     res.json(result);

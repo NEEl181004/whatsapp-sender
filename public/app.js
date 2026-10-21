@@ -1386,6 +1386,9 @@ el.startCampaignBtn.addEventListener('click', async () => {
     state.campaignRunning = true;
     state.campaignReport = [];
 
+    const chkSimulateTyping = document.getElementById('chkSimulateTyping');
+    const chkBatchRest = document.getElementById('chkBatchRest');
+
     const res = await fetch('/api/campaign/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1393,8 +1396,11 @@ el.startCampaignBtn.addEventListener('click', async () => {
         contacts: selectedList,
         messageTemplate: messageText,
         mediaFiles: state.mediaFiles,
-        minDelay: Number(el.minDelayInput.value) || 4,
-        maxDelay: Number(el.maxDelayInput.value) || 8
+        minDelay: Number(el.minDelayInput.value) || 10,
+        maxDelay: Number(el.maxDelayInput.value) || 20,
+        simulateTyping: chkSimulateTyping ? chkSimulateTyping.checked : true,
+        batchSize: chkBatchRest && chkBatchRest.checked ? 20 : 0,
+        batchRestSec: chkBatchRest && chkBatchRest.checked ? 120 : 0
       })
     });
 

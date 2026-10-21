@@ -31,10 +31,24 @@ export class CampaignManager extends EventEmitter {
 
   replaceVariables(template, contact) {
     if (!template) return '';
-    return template
+    let result = template
       .replace(/{name}/gi, contact.name || 'Friend')
       .replace(/{firstName}/gi, contact.firstName || contact.name || 'Friend')
       .replace(/{phone}/gi, contact.phone || '');
+
+    // Spintax support: e.g. {Hello|Hi|Greetings} randomly selected per contact
+    result = result.replace(/\{([^{}]+)\}/g, (match, choices) => {
+      if (choices.includes('|')) {
+        const parts = choices.split('|');
+        return parts[Math.floor(Math.random() * parts.length)].trim();
+      }
+      return match;
+    });
+
+    // Anti-Fingerprinting: Append invisible zero-width marker to ensure unique cryptographic hash per message
+    const zeroWidthMarkers = ['\u200B', '\u200C', '\u200D', '\uFEFF'];
+    const marker = zeroWidthMarkers[Math.floor(Math.random() * zeroWidthMarkers.length)];
+    return result + marker;
   }
 
   async ensureConnected(maxWaitMs = 45000) {
@@ -66,8 +80,11 @@ export class CampaignManager extends EventEmitter {
       videoOriginalName = '',
       mediaFiles = [],
       videoCaptionTemplate = '',
-      minDelay = 3,
-      maxDelay = 6
+      minDelay = 8,
+      maxDelay = 18,
+      simulateTyping = true,
+      batchSize = 20,
+      batchRestSec = 120
     } = options;
 
     if (!contacts || contacts.length === 0) {
@@ -146,6 +163,12 @@ export class CampaignManager extends EventEmitter {
           const textToSend = this.replaceVariables(messageTemplate, contact);
           const captionToSend = this.replaceVariables(videoCaptionTemplate || messageTemplate, contact);
 
+          // Human simulation: Emulate typing presence for 1.8s - 3.2s
+          if (simulateTyping && this.session?.simulateTyping) {
+            const typingDuration = Math.floor(Math.random() * 1400 + 1800);
+            await this.session.simulateTyping(targetJid, typingDuration);
+          }
+
           try {
             // Direct, reliable transmission using Baileys standard socket protocol
             if (mediaFiles && mediaFiles.length > 0) {
@@ -167,6 +190,26 @@ export class CampaignManager extends EventEmitter {
               reason: 'Delivered',
               time: new Date().toLocaleTimeString()
             });
+
+            // Anti-Ban Batch Cooldown: Rest after every batchSize messages (e.g. 20)
+            if (batchSize > 0 && batchRestSec > 0 && 
+                this.currentCampaign.sentCount > 0 && 
+                (this.currentCampaign.sentCount % batchSize === 0) && 
+                i < contacts.length - 1 && !this.shouldStop) {
+              this.addLog('warn', `🛡️ Anti-Ban Rest Break: Sent ${this.currentCampaign.sentCount} messages. Resting for ${batchRestSec}s to keep your account safe and simulate human activity...`);
+              const restStart = Date.now();
+              while (Date.now() - restStart < batchRestSec * 1000) {
+                if (this.shouldStop) break;
+                while (this.isPaused) {
+                  await this.sleep(1000);
+                  if (this.shouldStop) break;
+                }
+                await this.sleep(1000);
+              }
+              if (!this.shouldStop) {
+                this.addLog('info', `✔ Rest break complete! Resuming next batch...`);
+              }
+            }
 
           } catch (err) {
             const errMsg = String(err.message || '').toLowerCase();

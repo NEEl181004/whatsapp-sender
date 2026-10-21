@@ -385,6 +385,9 @@
                 <button type="button" class="tag-chip" onclick="insertTag('{phone}')" title="Formatted Phone Number">
                   + {phone}
                 </button>
+                <button type="button" class="tag-chip" onclick="insertTag('{Hello|Hi|Hey}')" title="Spintax Random Variation">
+                  🎲 {Hello|Hi|Hey}
+                </button>
               </div>
             </div>
 
@@ -394,7 +397,8 @@
                 <label for="messageTemplate">Message Text / Video Caption:</label>
                 <span id="charCount" class="text-muted text-xs">0 chars</span>
               </div>
-              <textarea id="messageTemplate" rows="5" placeholder="Hi {firstName}, here is a special video for you! Check it out and let me know your thoughts." class="custom-textarea"></textarea>
+              <textarea id="messageTemplate" rows="5" placeholder="{Hello|Hi|Hey} {firstName}, here is an important update for you! {Check it out|Take a look} and let me know." class="custom-textarea"></textarea>
+              <small class="text-xs text-muted" style="display:block; margin-top: 4px;">🛡️ <strong>Anti-Ban Spintax:</strong> Use <code>{Option 1|Option 2|Option 3}</code> to automatically randomize words so each customer gets unique message text.</small>
             </div>
 
             <!-- Multi-Media Upload Section (Images & Videos) -->
@@ -503,27 +507,43 @@
               <p class="settings-desc">Media uploads to WhatsApp ONCE, then relays instantly without consuming internet data for each person.</p>
               
               <!-- Speed Presets -->
+              <!-- Speed Presets -->
               <div class="speed-presets-bar mb-2">
-                <button type="button" class="btn-preset active" data-min="1" data-max="3" onclick="setSpeedPreset(1, 3, this)">
-                  🚀 Turbo (1-3s)
+                <button type="button" class="btn-preset active" data-min="10" data-max="20" onclick="setSpeedPreset(10, 20, this)">
+                  🛡️ Safe Anti-Ban (10-20s)
                 </button>
-                <button type="button" class="btn-preset" data-min="3" data-max="6" onclick="setSpeedPreset(3, 6, this)">
-                  ⚖️ Balanced (3-6s)
+                <button type="button" class="btn-preset" data-min="6" data-max="12" onclick="setSpeedPreset(6, 12, this)">
+                  ⚖️ Balanced (6-12s)
                 </button>
-                <button type="button" class="btn-preset" data-min="5" data-max="10" onclick="setSpeedPreset(5, 10, this)">
-                  🛡️ Safe Anti-Ban (5-10s)
+                <button type="button" class="btn-preset" data-min="20" data-max="40" onclick="setSpeedPreset(20, 40, this)">
+                  🧘 Ultra-Safe / Warm-Up (20-40s)
                 </button>
               </div>
 
               <div class="delay-inputs">
                 <div>
                   <label for="minDelayInput">Min Delay (sec):</label>
-                  <input type="number" id="minDelayInput" value="1" min="1" max="60" class="input-sm">
+                  <input type="number" id="minDelayInput" value="10" min="4" max="120" class="input-sm">
                 </div>
                 <div>
                   <label for="maxDelayInput">Max Delay (sec):</label>
-                  <input type="number" id="maxDelayInput" value="3" min="1" max="120" class="input-sm">
+                  <input type="number" id="maxDelayInput" value="20" min="6" max="300" class="input-sm">
                 </div>
+              </div>
+
+              <!-- Anti-Ban Shield Options -->
+              <div style="margin-top: 12px; padding: 12px; background: rgba(37, 211, 102, 0.08); border: 1px solid rgba(37, 211, 102, 0.25); border-radius: 8px; font-size: 0.82rem;">
+                <div style="font-weight: 700; color: #4ade80; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                  🛡️ Anti-Ban Human Shield (Active)
+                </div>
+                <label style="display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; cursor: pointer;">
+                  <input type="checkbox" id="chkSimulateTyping" checked style="margin-top: 2px;">
+                  <span><strong>Simulate Human Typing:</strong> Shows realistic "typing..." state for 2-3s before sending each message.</span>
+                </label>
+                <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="chkBatchRest" checked style="margin-top: 2px;">
+                  <span><strong>Batch Cooldown Rest:</strong> Automatically pauses for 2 mins every 20 sends to reset spam velocity counters.</span>
+                </label>
               </div>
             </div>
 

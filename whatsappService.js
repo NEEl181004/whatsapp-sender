@@ -288,6 +288,15 @@ export class WhatsAppSession extends EventEmitter {
     }
   }
 
+  async simulateTyping(jid, durationMs = 2000) {
+    if (!this.sock || this.status !== 'connected' || !jid) return;
+    try {
+      await this.sock.sendPresenceUpdate('composing', jid);
+      await new Promise((resolve) => setTimeout(resolve, durationMs));
+      await this.sock.sendPresenceUpdate('paused', jid);
+    } catch (_) {}
+  }
+
   async sendTextMessage(jid, text) {
     if (!this.sock || this.status !== 'connected') {
       throw new Error('WhatsApp is not connected');
