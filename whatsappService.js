@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import { EventEmitter } from 'events';
 import { contactsDb } from './contactsDb.js';
+import { blacklistDb } from './blacklistDb.js';
 
 const SESSIONS_BASE_DIR = path.resolve(process.cwd(), 'auth_info_baileys', 'sessions');
 
@@ -100,6 +101,51 @@ export class WhatsAppSession extends EventEmitter {
       });
 
       this.sock.ev.on('creds.update', saveCreds);
+
+      // === Automatic STOP / Opt-Out & Anti-Spam Complaint Protection ===
+      this.sock.ev.on('messages.upsert', async ({ messages }) => {
+        if (!messages || !Array.isArray(messages)) return;
+        for (const msg of messages) {
+          if (msg.key?.fromMe || !msg.message || msg.key?.remoteJid === 'status@broadcast') continue;
+
+          // Extract text from conversation, extended text, or media captions
+          const text = (
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            msg.message.videoMessage?.caption ||
+            ''
+          ).trim();
+
+          if (!text) continue;
+
+          const senderJid = msg.key.remoteJid;
+          const cleanDigits = senderJid ? senderJid.split('@')[0].replace(/\D/g, '') : '';
+          if (!cleanDigits) continue;
+
+          const lower = text.toLowerCase().trim();
+          const isStopRequest = /^(stop|unsubscribe|remove|cancel|0|end|quit|stop message|don't message|dont message|band karo|hatao)$/i.test(lower) ||
+                                lower.includes('stop sending') ||
+                                lower.includes('unsubscribe me') ||
+                                lower.includes('remove me') ||
+                                lower.includes('do not message');
+
+          if (isStopRequest) {
+            console.log(`[WhatsApp ${this.sessionId}] Opt-out request received from +${cleanDigits}: "${text}"`);
+            blacklistDb.add(cleanDigits, `Replied "${text}"`, msg.pushName || '');
+            contactsDb.updateStatus(cleanDigits, 'Unsubscribed', 'Replied STOP', this.accountPhone || this.sessionId);
+
+            // Send polite automated confirmation so user doesn't hit WhatsApp's Report as Spam button
+            try {
+              await this.sock.sendMessage(senderJid, {
+                text: `✔ You have been unsubscribed and will not receive further promotional messages. Thank you.`
+              });
+            } catch (_) {}
+
+            this.emit('contact:unsubscribed', { digits: cleanDigits, text, pushName: msg.pushName });
+          }
+        }
+      });
 
       this.sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -576,6 +622,7 @@ class SessionManager extends EventEmitter {
     session.on('qr', (data) => this.emit('session:qr', data));
     session.on('pairing_code', (data) => this.emit('session:pairing_code', data));
     session.on('connected', (data) => this.emit('session:connected', data));
+    session.on('contact:unsubscribed', (data) => this.emit('session:contact_unsubscribed', { ...data, sessionId: cleanId }));
 
     // Only auto-init if this device already had saved credentials
     if (autoInit && session.hasSavedCredentials()) {

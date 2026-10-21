@@ -316,6 +316,9 @@
                 <span class="badge badge-emerald"><strong id="totalContactsLoaded">0</strong> Total Loaded</span>
                 <span class="badge badge-blue"><strong id="selectedContactsCount">0</strong> Selected</span>
                 <span class="badge" id="contactsAccountBadge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">👤 Account: None</span>
+                <button type="button" id="btnViewBlacklist" class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); cursor: pointer; display: inline-flex; align-items: center; gap: 4px;" title="View contacts who replied STOP / Unsubscribed">
+                  🚫 Blocklist: <strong id="blacklistCountBadge">0</strong>
+                </button>
               </div>
               <div class="table-actions">
                 <div class="search-input-wrap">
@@ -399,6 +402,23 @@
               </div>
               <textarea id="messageTemplate" rows="5" placeholder="{Hello|Hi|Hey} {firstName}, here is an important update for you! {Check it out|Take a look} and let me know." class="custom-textarea"></textarea>
               <small class="text-xs text-muted" style="display:block; margin-top: 4px;">🛡️ <strong>Anti-Ban Spintax:</strong> Use <code>{Option 1|Option 2|Option 3}</code> to automatically randomize words so each customer gets unique message text.</small>
+              
+              <!-- Anti-Ban Opt-out & Formatting Shield -->
+              <div style="margin-top: 10px; padding: 12px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px;">
+                <label style="display: flex; align-items: flex-start; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="chkAutoFormat" checked style="margin-top: 3px;">
+                  <div>
+                    <strong style="color: #60a5fa; font-size: 0.85rem;">🛡️ Auto-Format Anti-Ban Protection (Recommended)</strong>
+                    <p class="text-xs text-muted" style="margin: 3px 0 0 0; line-height: 1.4;">
+                      Automatically structures each message with: <br>
+                      <strong>1. Greeting &amp; Name:</strong> <code>{Hello|Hi|Greetings} &lt;First Name&gt;,</code><br>
+                      <strong>2. Newline:</strong> Clean separation between greeting and message.<br>
+                      <strong>3. Opt-Out Footer:</strong> <code>Reply STOP if you don't wish to receive future updates.</code><br>
+                      <span style="color: #4ade80;">✔ Anyone replying STOP is auto-saved to blocklist &amp; excluded from all future campaigns!</span>
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
 
             <!-- Multi-Media Upload Section (Images & Videos) -->
@@ -708,6 +728,47 @@
       </div>
       <div class="modal-footer">
         <button id="dismissMobileModalBtn" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for Unsubscribed / Blacklist DB -->
+  <div id="blacklistModal" class="modal-backdrop hidden">
+    <div class="modal-card" style="max-width: 650px;">
+      <div class="modal-header">
+        <h3 class="modal-title" style="display: flex; align-items: center; gap: 8px;">
+          <span>🚫 Unsubscribed / Blocked Numbers</span>
+          <span class="badge badge-danger" id="modalBlacklistCount">0</span>
+        </h3>
+        <button id="closeBlacklistModalBtn" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="text-xs text-muted mb-3">
+          Recipients who reply <strong>STOP</strong>, <strong>UNSUBSCRIBE</strong>, etc., are automatically captured here. Future campaigns automatically skip them to eliminate spam complaints and prevent account bans.
+        </p>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="manualBlacklistInput" placeholder="Manually add phone number (e.g. 919876543210)" class="input-sm flex-1">
+          <button type="button" id="btnAddBlacklistManual" class="btn-secondary btn-sm">+ Add to Blocklist</button>
+        </div>
+        <div style="max-height: 280px; overflow-y: auto; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 6px;">
+          <table class="contacts-table" style="font-size: 0.8rem; margin: 0;">
+            <thead>
+              <tr>
+                <th>Phone Number</th>
+                <th>Name</th>
+                <th>Reason</th>
+                <th>Date</th>
+                <th width="70">Action</th>
+              </tr>
+            </thead>
+            <tbody id="blacklistTableBody">
+              <tr><td colspan="5" style="text-align: center; color: #9ca3af; padding: 20px;">No unsubscribed contacts yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="closeBlacklistModalFooterBtn" class="btn-secondary">Close</button>
       </div>
     </div>
   </div>

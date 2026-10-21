@@ -13,6 +13,7 @@ import { exec } from 'child_process';
 import { sessionManager, whatsappService } from './whatsappService.js';
 import { getCampaignManager, campaignManager } from './campaignManager.js';
 import { contactsDb } from './contactsDb.js';
+import { blacklistDb } from './blacklistDb.js';
 import {
   parseCsvContacts,
   parseVcfContacts,
@@ -482,7 +483,7 @@ app.post('/api/upload-video', (req, res) => {
 // === Single Test Message Endpoint ===
 app.post('/api/test-message', async (req, res) => {
   try {
-    const { phone, name = 'Tester', message, mediaFiles = [], videoFilename, countryCode = '91' } = req.body;
+    const { phone, name = 'Customer', message, mediaFiles = [], videoFilename, countryCode = '91', autoFormatMessage = true } = req.body;
     if (!phone) {
       return res.status(400).json({ error: 'Phone number is required' });
     }
@@ -499,7 +500,7 @@ app.post('/api/test-message', async (req, res) => {
     }
 
     const contactObj = { name, firstName: name.split(' ')[0], phone: formatted.formatted };
-    const personalizedText = campaign.replaceVariables(message, contactObj);
+    const personalizedText = campaign.buildFormattedMessage(message, contactObj, autoFormatMessage);
 
     // Resolve local paths for mediaFiles
     const resolvedMedia = [];
@@ -555,7 +556,8 @@ app.post('/api/campaign/start', async (req, res) => {
       maxDelay,
       simulateTyping,
       batchSize,
-      batchRestSec
+      batchRestSec,
+      autoFormatMessage
     } = req.body;
 
     const resolvedMedia = [];
@@ -590,13 +592,34 @@ app.post('/api/campaign/start', async (req, res) => {
       maxDelay,
       simulateTyping: simulateTyping !== false,
       batchSize: batchSize !== undefined ? Number(batchSize) : 20,
-      batchRestSec: batchRestSec !== undefined ? Number(batchRestSec) : 120
+      batchRestSec: batchRestSec !== undefined ? Number(batchRestSec) : 120,
+      autoFormatMessage: autoFormatMessage !== false
     });
 
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// === Blacklist / Opt-Out Endpoints ===
+app.get('/api/blacklist', (req, res) => {
+  res.json({
+    count: blacklistDb.count(),
+    contacts: blacklistDb.getAll()
+  });
+});
+
+app.post('/api/blacklist/add', (req, res) => {
+  const { phone, reason, name } = req.body;
+  if (!phone) return res.status(400).json({ error: 'Phone number required' });
+  const record = blacklistDb.add(phone, reason || 'Manually added', name || '');
+  res.json({ success: true, record });
+});
+
+app.delete('/api/blacklist/:digits', (req, res) => {
+  const ok = blacklistDb.remove(req.params.digits);
+  res.json({ success: ok });
 });
 
 app.post('/api/campaign/pause', (req, res) => {
@@ -698,6 +721,14 @@ sessionManager.on('session:connected', (data) => {
   const room = `device_${data.sessionId}`;
   io.to(room).emit('whatsapp:connected', data.user);
   io.to(room).emit('contacts:updated');
+});
+
+sessionManager.on('session:contact_unsubscribed', (data) => {
+  const room = `device_${data.sessionId}`;
+  io.to(room).emit('contact:unsubscribed', data);
+  io.to(room).emit('contacts:updated');
+  // Also broadcast globally so dashboard badges update
+  io.emit('blacklist:updated');
 });
 
 // Start server listening on all network interfaces

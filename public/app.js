@@ -1051,6 +1051,7 @@ window.insertTag = function (tag) {
 };
 
 el.messageTemplate.addEventListener('input', updateMockupPreview);
+document.getElementById('chkAutoFormat')?.addEventListener('change', updateMockupPreview);
 
 function updateMockupPreview() {
   const rawText = el.messageTemplate.value || 'Hi {firstName}, here is a special message for you!';
@@ -1062,6 +1063,24 @@ function updateMockupPreview() {
     .replace(/{name}/gi, sampleContact.name)
     .replace(/{firstName}/gi, sampleContact.firstName)
     .replace(/{phone}/gi, sampleContact.phone);
+
+  // Preview first variation of spintax
+  previewText = previewText.replace(/\{([^{}]+)\}/g, (match, choices) => {
+    if (choices.includes('|')) {
+      return choices.split('|')[0].trim();
+    }
+    return match;
+  });
+
+  const chkAutoFormat = document.getElementById('chkAutoFormat');
+  if (chkAutoFormat ? chkAutoFormat.checked : true) {
+    const hasGreeting = /^(hi|hello|hey|dear|namaste|greetings)/i.test(previewText.trim());
+    const hasOptOut = /reply stop|to unsubscribe|stop to opt/i.test(previewText.trim());
+    const contactName = sampleContact.firstName || sampleContact.name || 'Friend';
+    const header = hasGreeting ? '' : `Hello ${contactName},\n\n`;
+    const footer = hasOptOut ? '' : `\n\nReply STOP if you don't wish to receive future updates.`;
+    previewText = `${header}${previewText}${footer}`;
+  }
 
   el.mockupBubbleText.textContent = previewText;
 
@@ -1283,6 +1302,7 @@ el.sendTestBtn.addEventListener('click', async () => {
   addTerminalLog('info', `Sending test message with ${state.mediaFiles.length} media file(s) to ${phone}...`);
 
   try {
+    const chkAutoFormat = document.getElementById('chkAutoFormat');
     const res = await fetch('/api/test-message', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1290,7 +1310,8 @@ el.sendTestBtn.addEventListener('click', async () => {
         phone,
         message: el.messageTemplate.value,
         mediaFiles: state.mediaFiles,
-        countryCode: el.countryCodeSelect.value
+        countryCode: el.countryCodeSelect.value,
+        autoFormatMessage: chkAutoFormat ? chkAutoFormat.checked : true
       })
     });
     const data = await res.json();
@@ -1388,6 +1409,7 @@ el.startCampaignBtn.addEventListener('click', async () => {
 
     const chkSimulateTyping = document.getElementById('chkSimulateTyping');
     const chkBatchRest = document.getElementById('chkBatchRest');
+    const chkAutoFormat = document.getElementById('chkAutoFormat');
 
     const res = await fetch('/api/campaign/start', {
       method: 'POST',
@@ -1399,6 +1421,7 @@ el.startCampaignBtn.addEventListener('click', async () => {
         minDelay: Number(el.minDelayInput.value) || 10,
         maxDelay: Number(el.maxDelayInput.value) || 20,
         simulateTyping: chkSimulateTyping ? chkSimulateTyping.checked : true,
+        autoFormatMessage: chkAutoFormat ? chkAutoFormat.checked : true,
         batchSize: chkBatchRest && chkBatchRest.checked ? 20 : 0,
         batchRestSec: chkBatchRest && chkBatchRest.checked ? 120 : 0
       })
@@ -1570,6 +1593,121 @@ function escapeHtml(str) {
 updateMockupPreview();
 updateCampaignSummary();
 loadSavedContacts();
+fetchBlacklist();
+
+// ================= UNSUBSCRIBED / BLACKLIST DB CONTROLS =================
+const btnViewBlacklist = document.getElementById('btnViewBlacklist');
+const blacklistModal = document.getElementById('blacklistModal');
+const closeBlacklistModalBtn = document.getElementById('closeBlacklistModalBtn');
+const closeBlacklistModalFooterBtn = document.getElementById('closeBlacklistModalFooterBtn');
+const blacklistCountBadge = document.getElementById('blacklistCountBadge');
+const modalBlacklistCount = document.getElementById('modalBlacklistCount');
+const blacklistTableBody = document.getElementById('blacklistTableBody');
+const manualBlacklistInput = document.getElementById('manualBlacklistInput');
+const btnAddBlacklistManual = document.getElementById('btnAddBlacklistManual');
+
+if (btnViewBlacklist && blacklistModal) {
+  btnViewBlacklist.addEventListener('click', () => {
+    blacklistModal.classList.remove('hidden');
+    fetchBlacklist();
+  });
+}
+
+const hideBlacklistModal = () => {
+  if (blacklistModal) blacklistModal.classList.add('hidden');
+};
+if (closeBlacklistModalBtn) closeBlacklistModalBtn.addEventListener('click', hideBlacklistModal);
+if (closeBlacklistModalFooterBtn) closeBlacklistModalFooterBtn.addEventListener('click', hideBlacklistModal);
+
+async function fetchBlacklist() {
+  try {
+    const res = await fetch('/api/blacklist');
+    const data = await res.json();
+    if (data && data.contacts) {
+      renderBlacklist(data.contacts, data.count);
+    }
+  } catch (err) {
+    console.warn('Error fetching blacklist:', err.message);
+  }
+}
+
+function renderBlacklist(contacts = [], count = 0) {
+  if (blacklistCountBadge) blacklistCountBadge.textContent = count;
+  if (modalBlacklistCount) modalBlacklistCount.textContent = count;
+
+  if (!blacklistTableBody) return;
+
+  if (!contacts || contacts.length === 0) {
+    blacklistTableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #9ca3af; padding: 20px;">No unsubscribed contacts yet.</td></tr>`;
+    return;
+  }
+
+  let html = '';
+  contacts.forEach((c) => {
+    const dateStr = c.date ? new Date(c.date).toLocaleDateString() : '';
+    html += `
+      <tr>
+        <td><strong>+${escapeHtml(c.phone || c.digits)}</strong></td>
+        <td>${escapeHtml(c.name || 'Unknown')}</td>
+        <td><span class="badge badge-warning" style="font-size: 0.75rem;">${escapeHtml(c.reason || 'Opted Out')}</span></td>
+        <td class="text-xs text-muted">${dateStr}</td>
+        <td>
+          <button type="button" class="btn-ghost btn-xs text-danger" onclick="removeBlacklistEntry('${escapeHtml(c.digits)}')">Remove</button>
+        </td>
+      </tr>
+    `;
+  });
+  blacklistTableBody.innerHTML = html;
+}
+
+window.removeBlacklistEntry = async function (digits) {
+  if (!confirm(`Unblock +${digits}? They will be eligible to receive messages in future campaigns.`)) return;
+  try {
+    const res = await fetch(`/api/blacklist/${digits}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      addTerminalLog('info', `Removed +${digits} from Blocklist.`);
+      fetchBlacklist();
+    }
+  } catch (err) {
+    alert('Failed to remove from blocklist: ' + err.message);
+  }
+};
+
+if (btnAddBlacklistManual && manualBlacklistInput) {
+  btnAddBlacklistManual.addEventListener('click', async () => {
+    const phone = manualBlacklistInput.value.trim();
+    if (!phone) {
+      alert('Please enter a phone number to add to the blocklist.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/blacklist/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, reason: 'Manually blocked' })
+      });
+      const data = await res.json();
+      if (data.success) {
+        manualBlacklistInput.value = '';
+        addTerminalLog('warn', `🚫 Added +${phone} to Blocklist.`);
+        fetchBlacklist();
+      }
+    } catch (err) {
+      alert('Error adding to blocklist: ' + err.message);
+    }
+  });
+}
+
+// Socket events for real-time blacklist updates
+socket.on('contact:unsubscribed', (data) => {
+  addTerminalLog('warn', `🚫 Contact +${data.digits} (${data.pushName || ''}) replied "${data.text}" and was added to Blacklist DB.`);
+  fetchBlacklist();
+});
+
+socket.on('blacklist:updated', () => {
+  fetchBlacklist();
+});
 
 // Register Service Worker for Mobile PWA (Add to Home screen / APK experience)
 if ('serviceWorker' in navigator) {

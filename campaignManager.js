@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { sessionManager } from './whatsappService.js';
 import { contactsDb } from './contactsDb.js';
+import { blacklistDb } from './blacklistDb.js';
 
 export class CampaignManager extends EventEmitter {
   constructor(sessionId, session = null) {
@@ -27,6 +28,30 @@ export class CampaignManager extends EventEmitter {
 
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  buildFormattedMessage(template, contact, autoFormat = true) {
+    if (!template) return '';
+    let text = String(template).trim();
+
+    if (autoFormat) {
+      const hasGreeting = /^(hi|hello|hey|dear|namaste|greetings)/i.test(text);
+      const hasOptOut = /reply stop|to unsubscribe|stop to opt/i.test(text);
+
+      let header = '';
+      if (!hasGreeting) {
+        header = `{Hello|Hi|Greetings} {firstName},\n\n`;
+      }
+
+      let footer = '';
+      if (!hasOptOut) {
+        footer = `\n\nReply STOP if you don't wish to receive future updates.`;
+      }
+
+      text = `${header}${text}${footer}`;
+    }
+
+    return this.replaceVariables(text, contact);
   }
 
   replaceVariables(template, contact) {
@@ -84,7 +109,8 @@ export class CampaignManager extends EventEmitter {
       maxDelay = 18,
       simulateTyping = true,
       batchSize = 20,
-      batchRestSec = 120
+      batchRestSec = 120,
+      autoFormatMessage = true
     } = options;
 
     if (!contacts || contacts.length === 0) {
@@ -128,6 +154,22 @@ export class CampaignManager extends EventEmitter {
 
           if (this.shouldStop) break;
 
+          const contact = contacts[i];
+
+          // Check if contact has previously unsubscribed / replied STOP
+          if (blacklistDb.isBlacklisted(contact.digits)) {
+            this.currentCampaign.skippedCount++;
+            this.addLog('warn', `⏭️ Skipped ${contact.name} (${contact.phone}): Contact previously replied STOP (Unsubscribed).`);
+            this.currentCampaign.report.push({
+              name: contact.name,
+              phone: contact.phone,
+              status: 'Skipped (Unsubscribed)',
+              reason: 'On STOP / Opt-Out Blacklist',
+              time: new Date().toLocaleTimeString()
+            });
+            continue;
+          }
+
           // Ensure session is connected before attempting to send
           if (!this.session || this.session.status !== 'connected') {
             const reconnected = await this.ensureConnected(45000);
@@ -145,7 +187,6 @@ export class CampaignManager extends EventEmitter {
             }
           }
 
-          const contact = contacts[i];
           this.currentCampaign.current = i + 1;
 
           this.emit('progress', {
@@ -160,8 +201,8 @@ export class CampaignManager extends EventEmitter {
           this.addLog('info', `Checking & sending to ${contact.name} (${contact.phone})...`);
           
           const targetJid = contact.jid || `${contact.digits}@s.whatsapp.net`;
-          const textToSend = this.replaceVariables(messageTemplate, contact);
-          const captionToSend = this.replaceVariables(videoCaptionTemplate || messageTemplate, contact);
+          const textToSend = this.buildFormattedMessage(messageTemplate, contact, autoFormatMessage);
+          const captionToSend = this.buildFormattedMessage(videoCaptionTemplate || messageTemplate, contact, autoFormatMessage);
 
           // Human simulation: Emulate typing presence for 1.8s - 3.2s
           if (simulateTyping && this.session?.simulateTyping) {
