@@ -1422,8 +1422,13 @@ el.startCampaignBtn.addEventListener('click', async () => {
         maxDelay: Number(el.maxDelayInput.value) || 20,
         simulateTyping: chkSimulateTyping ? chkSimulateTyping.checked : true,
         autoFormatMessage: chkAutoFormat ? chkAutoFormat.checked : true,
+        randomCooldown: chkBatchRest ? chkBatchRest.checked : true,
         batchSize: chkBatchRest && chkBatchRest.checked ? 20 : 0,
-        batchRestSec: chkBatchRest && chkBatchRest.checked ? 120 : 0
+        batchRestSec: chkBatchRest && chkBatchRest.checked ? 120 : 0,
+        batchMinMsgs: 12,
+        batchMaxMsgs: 25,
+        cooldownMinSec: 60,
+        cooldownMaxSec: 150
       })
     });
 

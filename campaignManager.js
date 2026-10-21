@@ -110,6 +110,11 @@ export class CampaignManager extends EventEmitter {
       simulateTyping = true,
       batchSize = 20,
       batchRestSec = 120,
+      randomCooldown = true,
+      batchMinMsgs = 12,
+      batchMaxMsgs = 25,
+      cooldownMinSec = 60,
+      cooldownMaxSec = 150,
       autoFormatMessage = true
     } = options;
 
@@ -125,6 +130,26 @@ export class CampaignManager extends EventEmitter {
     this.isRunning = true;
     this.isPaused = false;
     this.shouldStop = false;
+
+    // Helper to calculate the next unpredictable message burst count (e.g. 12 - 25 messages)
+    const getNextBurstTarget = () => {
+      if (!randomCooldown && batchSize > 0) return batchSize;
+      const min = Math.max(5, Number(batchMinMsgs) || 12);
+      const max = Math.max(min + 1, Number(batchMaxMsgs) || 25);
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    };
+
+    // Helper to calculate the next unpredictable rest duration in seconds (e.g. 60s - 150s)
+    const getNextCooldownSec = () => {
+      if (!randomCooldown && batchRestSec > 0) return batchRestSec;
+      const min = Math.max(20, Number(cooldownMinSec) || 60);
+      const max = Math.max(min + 10, Number(cooldownMaxSec) || 150);
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    };
+
+    const isCooldownEnabled = (batchSize > 0 || randomCooldown) && (batchRestSec > 0 || cooldownMinSec > 0);
+    let burstCount = 0;
+    let nextBurstMilestone = getNextBurstTarget();
 
     this.currentCampaign = {
       startTime: new Date().toISOString(),
@@ -232,14 +257,15 @@ export class CampaignManager extends EventEmitter {
               time: new Date().toLocaleTimeString()
             });
 
-            // Anti-Ban Batch Cooldown: Rest after every batchSize messages (e.g. 20)
-            if (batchSize > 0 && batchRestSec > 0 && 
-                this.currentCampaign.sentCount > 0 && 
-                (this.currentCampaign.sentCount % batchSize === 0) && 
-                i < contacts.length - 1 && !this.shouldStop) {
-              this.addLog('warn', `🛡️ Anti-Ban Rest Break: Sent ${this.currentCampaign.sentCount} messages. Resting for ${batchRestSec}s to keep your account safe and simulate human activity...`);
+            burstCount++;
+
+            // Dynamic Anti-Ban Cooldown: Rest after an unpredictable, randomized number of sends
+            if (isCooldownEnabled && burstCount >= nextBurstMilestone && i < contacts.length - 1 && !this.shouldStop) {
+              const cooldownSec = getNextCooldownSec();
+              const cooldownMins = Math.round((cooldownSec / 60) * 10) / 10;
+              this.addLog('warn', `🛡️ Dynamic Anti-Ban Cooldown: Sent a burst of ${burstCount} messages. Taking an unpredictable human break for ${cooldownSec}s (~${cooldownMins}m) to defeat automated pattern detection...`);
               const restStart = Date.now();
-              while (Date.now() - restStart < batchRestSec * 1000) {
+              while (Date.now() - restStart < cooldownSec * 1000) {
                 if (this.shouldStop) break;
                 while (this.isPaused) {
                   await this.sleep(1000);
@@ -247,8 +273,10 @@ export class CampaignManager extends EventEmitter {
                 }
                 await this.sleep(1000);
               }
+              burstCount = 0;
+              nextBurstMilestone = getNextBurstTarget();
               if (!this.shouldStop) {
-                this.addLog('info', `✔ Rest break complete! Resuming next batch...`);
+                this.addLog('info', `✔ Cooldown break finished! Resuming next batch (next pause in ~${nextBurstMilestone} messages)...`);
               }
             }
 

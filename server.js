@@ -557,6 +557,11 @@ app.post('/api/campaign/start', async (req, res) => {
       simulateTyping,
       batchSize,
       batchRestSec,
+      randomCooldown,
+      batchMinMsgs,
+      batchMaxMsgs,
+      cooldownMinSec,
+      cooldownMaxSec,
       autoFormatMessage
     } = req.body;
 
@@ -593,6 +598,11 @@ app.post('/api/campaign/start', async (req, res) => {
       simulateTyping: simulateTyping !== false,
       batchSize: batchSize !== undefined ? Number(batchSize) : 20,
       batchRestSec: batchRestSec !== undefined ? Number(batchRestSec) : 120,
+      randomCooldown: randomCooldown !== false,
+      batchMinMsgs: batchMinMsgs !== undefined ? Number(batchMinMsgs) : 12,
+      batchMaxMsgs: batchMaxMsgs !== undefined ? Number(batchMaxMsgs) : 25,
+      cooldownMinSec: cooldownMinSec !== undefined ? Number(cooldownMinSec) : 60,
+      cooldownMaxSec: cooldownMaxSec !== undefined ? Number(cooldownMaxSec) : 150,
       autoFormatMessage: autoFormatMessage !== false
     });
 
