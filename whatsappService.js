@@ -118,18 +118,25 @@ export class WhatsAppSession extends EventEmitter {
         if (connection === 'close') {
           const statusCode = lastDisconnect?.error?.output?.statusCode;
           const isRestartRequired = statusCode === DisconnectReason.restartRequired || statusCode === 515;
-          const isLoggedOut = (statusCode === DisconnectReason.loggedOut || statusCode === 401) && this.hasSavedCredentials();
+          const isLoggedOut = statusCode === DisconnectReason.loggedOut;
           const shouldReconnect = !this.isExplicitLogout && !isLoggedOut;
 
           console.log(`[WhatsApp ${this.sessionId}] Connection closed (${statusCode}). Should reconnect: ${shouldReconnect}`);
 
-          if (this.isExplicitLogout || isLoggedOut) {
+          if (this.isExplicitLogout) {
             this.status = 'disconnected';
             this.userInfo = null;
             this.accountPhone = null;
             this.qrCodeDataUrl = null;
             this.emit('status', { status: this.status, hasSavedCredentials: false, sessionId: this.sessionId });
             await this.clearAuthFolder();
+          } else if (isLoggedOut) {
+            this.status = 'disconnected';
+            this.userInfo = null;
+            this.accountPhone = null;
+            this.qrCodeDataUrl = null;
+            // Keep auth files on disk; user can reconnect or explicitly log out
+            this.emit('status', { status: this.status, hasSavedCredentials: this.hasSavedCredentials(), sessionId: this.sessionId });
           } else if (shouldReconnect) {
             this.status = 'connecting';
             this.emit('status', { status: this.status, hasSavedCredentials: this.hasSavedCredentials(), sessionId: this.sessionId });

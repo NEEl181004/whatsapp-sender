@@ -223,21 +223,37 @@ public class MainActivity extends Activity {
 
     private void handleConnectionFailure(String failingUrl, String details) {
         // If it failed because of 127.0.0.1 or localhost, immediately auto-switch to Render cloud!
-        if (failingUrl != null && (failingUrl.contains("127.0.0.1") || failingUrl.contains("localhost"))) {
+        if (failingUrl != null && (failingUrl.contains("127.0.0.1") || failingUrl.contains("localhost") || failingUrl.equals("about:blank"))) {
             prefs.edit().putString(KEY_SERVER_URL, DEFAULT_SERVER_URL).apply();
             etServerUrl.setText(DEFAULT_SERVER_URL);
             loadServerUrl(DEFAULT_SERVER_URL);
             return;
         }
 
+        // If trying Render cloud and it failed (e.g. Render free tier cold-start waking up in 20-30s)
+        if (failingUrl != null && failingUrl.contains("onrender.com")) {
+            tvStatusMsg.setText("Connecting to Render Cloud Server...\nRender free tier may take 20-30 seconds to wake up.\nAuto-reconnecting...");
+            connectionDialog.setVisibility(View.VISIBLE);
+            mainHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    loadServerUrl(DEFAULT_SERVER_URL);
+                }
+            }, 4000);
+            return;
+        }
+
         isErrorState = true;
-        // Load blank page to avoid standard white Android error page
         webView.loadUrl("about:blank");
         tvStatusMsg.setText("Could not reach " + failingUrl + "\n(" + details + ")\n\nTap 'Connect to Render Cloud' below:");
         connectionDialog.setVisibility(View.VISIBLE);
     }
 
     private void loadServerUrl(String url) {
+        if (url == null || url.contains("127.0.0.1") || url.contains("localhost") || !url.startsWith("http")) {
+            url = DEFAULT_SERVER_URL;
+            prefs.edit().putString(KEY_SERVER_URL, DEFAULT_SERVER_URL).apply();
+        }
         isErrorState = false;
         connectionDialog.setVisibility(View.GONE);
         webView.loadUrl(url);
@@ -279,8 +295,11 @@ public class MainActivity extends Activity {
                         if (parts.length >= 3) {
                             String ip = parts[1];
                             String port = parts[2];
-                            discoveredUrl = "http://" + ip + ":" + port;
-                            found = true;
+                            // Never accept loopback 127.0.0.1 from UDP discovery
+                            if (!ip.equals("127.0.0.1") && !ip.equals("localhost") && !ip.startsWith("127.")) {
+                                discoveredUrl = "http://" + ip + ":" + port;
+                                found = true;
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -307,8 +326,8 @@ public class MainActivity extends Activity {
                             connectionDialog.setVisibility(View.GONE);
                             loadServerUrl(finalUrl);
                         } else {
-                            tvStatusMsg.setText("Could not auto-detect. Please check your PC IP in WhatsApp-Sender on PC and type it below:");
-                            Toast.makeText(MainActivity.this, "Auto-detect timed out. Please enter PC IP manually.", Toast.LENGTH_LONG).show();
+                            tvStatusMsg.setText("No local PC server found. Connecting to Render Cloud...");
+                            loadServerUrl(DEFAULT_SERVER_URL);
                         }
                     }
                 });

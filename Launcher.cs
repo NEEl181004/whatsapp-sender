@@ -112,8 +112,12 @@ namespace WhatsAppDispatcher
             lblLocalUrl.AutoSize = true;
             card.Controls.Add(lblLocalUrl);
 
+            string effectivePhoneUrl = (!string.IsNullOrEmpty(localIp) && localIp != "127.0.0.1" && localIp != "localhost" && (localIp.StartsWith("192.168.") || localIp.StartsWith("10.") || localIp.StartsWith("172.")))
+                ? "http://" + localIp + ":3000"
+                : "https://whatsapp-sender-hx4d.onrender.com";
+
             lblPhoneUrl = new Label();
-            lblPhoneUrl.Text = "Mobile Phone URL:  http://" + localIp + ":3000";
+            lblPhoneUrl.Text = "Mobile Phone URL:  " + effectivePhoneUrl;
             lblPhoneUrl.Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
             lblPhoneUrl.ForeColor = Color.FromArgb(74, 222, 128);
             lblPhoneUrl.Location = new Point(16, 80);
@@ -121,7 +125,7 @@ namespace WhatsAppDispatcher
             card.Controls.Add(lblPhoneUrl);
 
             Label lblHint = new Label();
-            lblHint.Text = "Open the Mobile Phone URL in Chrome / Safari on any phone connected to this Wi-Fi.";
+            lblHint.Text = "Open this link on any phone (Android APK or Mobile Browser) to control WhatsApp Sender.";
             lblHint.Font = new Font("Segoe UI", 7.5f, FontStyle.Italic);
             lblHint.ForeColor = Color.FromArgb(156, 163, 175);
             lblHint.Location = new Point(16, 108);
@@ -152,7 +156,7 @@ namespace WhatsAppDispatcher
             btnCopyPhoneUrl.FlatAppearance.BorderSize = 0;
             btnCopyPhoneUrl.Click += (s, e) =>
             {
-                Clipboard.SetText("http://" + localIp + ":3000");
+                Clipboard.SetText(effectivePhoneUrl);
                 btnCopyPhoneUrl.Text = "✔ Copied!";
                 System.Windows.Forms.Timer t = new System.Windows.Forms.Timer();
                 t.Interval = 2000;

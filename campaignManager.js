@@ -37,6 +37,23 @@ export class CampaignManager extends EventEmitter {
       .replace(/{phone}/gi, contact.phone || '');
   }
 
+  async ensureConnected(maxWaitMs = 45000) {
+    if (this.session && this.session.status === 'connected') {
+      return true;
+    }
+    this.addLog('warn', `⏳ WhatsApp connection temporarily interrupted. Pausing campaign and waiting for reconnect (up to ${Math.round(maxWaitMs / 1000)}s)...`);
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      if (this.shouldStop) return false;
+      await this.sleep(1500);
+      if (this.session && this.session.status === 'connected') {
+        this.addLog('success', `✔ WhatsApp connection restored! Resuming campaign.`);
+        return true;
+      }
+    }
+    return false;
+  }
+
   async startCampaign(options) {
     if (this.isRunning) {
       throw new Error('A campaign is already running on this device');
@@ -81,19 +98,6 @@ export class CampaignManager extends EventEmitter {
 
     (async () => {
       try {
-        // Step 1: Pre-upload media to WhatsApp server ONCE
-        let preparedMediaList = [];
-        if (mediaFiles && mediaFiles.length > 0) {
-          this.addLog('info', `⏳ Pre-uploading ${mediaFiles.length} media file(s) to WhatsApp servers ONCE... (avoids re-uploading for every customer)`);
-          try {
-            preparedMediaList = await this.session.prepareMediaBundle(mediaFiles);
-            this.addLog('success', `✔ Media upload complete! Ready for rapid batch delivery to ${contacts.length} recipients.`);
-          } catch (prepErr) {
-            this.addLog('warn', `Media pre-upload notice: ${prepErr.message}. Will use direct transmission.`);
-          }
-        }
-
-        // Step 2: Iterate through recipients with 0 bytes re-upload!
         for (let i = 0; i < contacts.length; i++) {
           if (this.shouldStop) {
             this.addLog('warn', 'Campaign stopped by user.');
@@ -106,6 +110,23 @@ export class CampaignManager extends EventEmitter {
           }
 
           if (this.shouldStop) break;
+
+          // Ensure session is connected before attempting to send
+          if (!this.session || this.session.status !== 'connected') {
+            const reconnected = await this.ensureConnected(45000);
+            if (!reconnected) {
+              this.addLog('error', `🛑 WhatsApp disconnected. Campaign is safely PAUSED at contact ${i + 1} of ${contacts.length} to preserve your remaining ${contacts.length - i} contacts. Click Resume when WhatsApp reconnects.`);
+              this.isPaused = true;
+              this.emit('paused', { reason: 'WhatsApp disconnected' });
+              while (this.isPaused) {
+                await this.sleep(1000);
+                if (this.shouldStop) break;
+              }
+              if (this.shouldStop) break;
+              i--; // Retry this contact after resuming
+              continue;
+            }
+          }
 
           const contact = contacts[i];
           this.currentCampaign.current = i + 1;
@@ -121,41 +142,13 @@ export class CampaignManager extends EventEmitter {
 
           this.addLog('info', `Checking & sending to ${contact.name} (${contact.phone})...`);
           
+          const targetJid = contact.jid || `${contact.digits}@s.whatsapp.net`;
+          const textToSend = this.replaceVariables(messageTemplate, contact);
+          const captionToSend = this.replaceVariables(videoCaptionTemplate || messageTemplate, contact);
+
           try {
-            let targetJid = contact.jid || `${contact.digits}@s.whatsapp.net`;
-            try {
-              const check = await this.session.checkNumber(contact.digits);
-              if (check !== null) {
-                if (!check.exists) {
-                  // Auto-remove unregistered contact from persistent database
-                  contactsDb.deleteByDigits(contact.digits, this.accountKey);
-                  this.currentCampaign.failedCount++;
-                  this.addLog('warn', `⚠️ ${contact.name} (${contact.phone}) is NOT registered on WhatsApp. Automatically removed from database.`);
-                  this.currentCampaign.report.push({
-                    name: contact.name,
-                    phone: contact.phone,
-                    status: 'Removed (Not on WhatsApp)',
-                    reason: 'Number not registered on WhatsApp - deleted from DB',
-                    time: new Date().toLocaleTimeString()
-                  });
-                  this.emit('contact:unregistered_removed', { contact, digits: contact.digits });
-                  continue;
-                } else if (check.jid) {
-                  targetJid = check.jid;
-                }
-              }
-            } catch (chkErr) {
-              // Non-fatal check error, proceed with direct JID
-            }
-
-            // Prepare personalized text & caption
-            const textToSend = this.replaceVariables(messageTemplate, contact);
-            const captionToSend = this.replaceVariables(videoCaptionTemplate || messageTemplate, contact);
-
-            // Send using preloaded media token
-            if (preparedMediaList && preparedMediaList.length > 0) {
-              await this.session.sendPreloadedMediaBundle(targetJid, preparedMediaList, captionToSend);
-            } else if (mediaFiles && mediaFiles.length > 0) {
+            // Direct, reliable transmission using Baileys standard socket protocol
+            if (mediaFiles && mediaFiles.length > 0) {
               await this.session.sendMediaBundle(targetJid, mediaFiles, captionToSend);
             } else if (videoPath) {
               await this.session.sendVideoMessage(targetJid, videoPath, captionToSend, 'video/mp4', videoOriginalName);
@@ -176,8 +169,57 @@ export class CampaignManager extends EventEmitter {
             });
 
           } catch (err) {
-            this.currentCampaign.failedCount++;
             const errMsg = String(err.message || '').toLowerCase();
+            const isConnErr = errMsg.includes('not connected') || 
+                              errMsg.includes('connection closed') || 
+                              errMsg.includes('connection lost') ||
+                              errMsg.includes('timed out');
+
+            // Handle temporary socket glitch: attempt reconnection and retry contact once
+            if (isConnErr) {
+              this.addLog('warn', `⚠️ Connection glitch while sending to ${contact.name}. Waiting for reconnect to retry...`);
+              const reconnected = await this.ensureConnected(45000);
+              if (reconnected) {
+                try {
+                  await this.sleep(1500);
+                  if (mediaFiles && mediaFiles.length > 0) {
+                    await this.session.sendMediaBundle(targetJid, mediaFiles, captionToSend);
+                  } else if (videoPath) {
+                    await this.session.sendVideoMessage(targetJid, videoPath, captionToSend, 'video/mp4', videoOriginalName);
+                  } else if (textToSend) {
+                    await this.session.sendTextMessage(targetJid, textToSend);
+                  }
+
+                  this.currentCampaign.sentCount++;
+                  contactsDb.updateStatus(contact.digits, 'Sent', 'Delivered', this.accountKey);
+                  this.addLog('success', `✔ Delivered to ${contact.name} (${contact.phone}) (after reconnect)`);
+                  this.currentCampaign.report.push({
+                    name: contact.name,
+                    phone: contact.phone,
+                    status: 'Sent',
+                    reason: 'Delivered (reconnected)',
+                    time: new Date().toLocaleTimeString()
+                  });
+                  continue; // Successfully delivered on retry!
+                } catch (_) {
+                  // Fall through to failure recording
+                }
+              } else {
+                // Connection permanently lost: PAUSE CAMPAIGN SAFELY!
+                this.isPaused = true;
+                this.addLog('error', `🛑 WhatsApp disconnected and could not reconnect. Campaign is PAUSED at contact ${i + 1} of ${contacts.length}. Your remaining ${contacts.length - i} contacts are safe. Click Resume once WhatsApp is reconnected.`);
+                this.emit('paused', { reason: 'WhatsApp disconnected' });
+                while (this.isPaused) {
+                  await this.sleep(1000);
+                  if (this.shouldStop) break;
+                }
+                if (this.shouldStop) break;
+                i--; // Retry this contact after resuming
+                continue;
+              }
+            }
+
+            this.currentCampaign.failedCount++;
             const isNotOnWa = errMsg.includes('not-authorized') || 
                               errMsg.includes('not registered') || 
                               errMsg.includes('item-not-found');

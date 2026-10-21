@@ -110,20 +110,26 @@ export function getLocalIpAddress() {
 }
 
 // === Network Info Endpoint (Mobile Access URL) ===
+const CLOUD_RENDER_URL = 'https://whatsapp-sender-hx4d.onrender.com';
+
+app.get('/api/ping', (req, res) => {
+  res.json({ status: 'ok', timestamp: Date.now() });
+});
+
 app.get('/api/network-info', async (req, res) => {
   const host = req.headers['x-forwarded-host'] || req.headers.host || '';
   const protocol = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
   const isCloud = host && (host.includes('onrender.com') || host.includes('railway.app') || (!host.includes('localhost') && !host.includes('127.0.0.1') && !host.includes('192.168.')));
 
-  let publicUrl;
+  let publicUrl = CLOUD_RENDER_URL;
   if (isCloud) {
     publicUrl = `${protocol}://${host}`;
   } else {
     const ip = getLocalIpAddress();
-    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1' && (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.'))) {
       publicUrl = `http://${ip}:${PORT}`;
     } else {
-      publicUrl = 'https://whatsapp-sender-hx4d.onrender.com';
+      publicUrl = CLOUD_RENDER_URL;
     }
   }
 
@@ -137,10 +143,10 @@ app.get('/api/network-info', async (req, res) => {
     port: PORT,
     localUrl: `http://localhost:${PORT}`,
     mobileUrl: publicUrl,
-    cloudUrl: 'https://whatsapp-sender-hx4d.onrender.com',
+    cloudUrl: CLOUD_RENDER_URL,
     qrDataUrl,
     ip: isCloud ? host : getLocalIpAddress(),
-    apkDownloadUrl: `${publicUrl}/WhatsApp-Sender.apk`
+    apkDownloadUrl: `${CLOUD_RENDER_URL}/api/download-apk`
   });
 });
 
@@ -162,8 +168,11 @@ try {
     const text = msg.toString();
     if (text.includes('DISCOVER_WHATSAPP_SENDER')) {
       const ip = getLocalIpAddress();
-      const response = Buffer.from(`WHATSAPP_SENDER_OFFER:${ip}:${PORT}`);
-      udpServer.send(response, rinfo.port, rinfo.address, () => {});
+      // Never offer loopback 127.0.0.1 to phone over UDP
+      if (ip && ip !== 'localhost' && ip !== '127.0.0.1' && (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.'))) {
+        const response = Buffer.from(`WHATSAPP_SENDER_OFFER:${ip}:${PORT}`);
+        udpServer.send(response, rinfo.port, rinfo.address, () => {});
+      }
     }
   });
   udpServer.bind(3001, '0.0.0.0', () => {
