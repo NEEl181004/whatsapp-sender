@@ -229,10 +229,14 @@ export class CampaignManager extends EventEmitter {
           const textToSend = this.buildFormattedMessage(messageTemplate, contact, autoFormatMessage);
           const captionToSend = this.buildFormattedMessage(videoCaptionTemplate || messageTemplate, contact, autoFormatMessage);
 
-          // Human simulation: Emulate typing presence for 1.8s - 3.2s
-          if (simulateTyping && this.session?.simulateTyping) {
-            const typingDuration = Math.floor(Math.random() * 1400 + 1800);
-            await this.session.simulateTyping(targetJid, typingDuration);
+          // Human mimic simulation: Emulate authentic keystroke velocity and thinking presence
+          if (simulateTyping) {
+            const contentLen = (textToSend || captionToSend || '').length;
+            if (this.session?.simulateHumanTyping) {
+              await this.session.simulateHumanTyping(targetJid, contentLen);
+            } else if (this.session?.simulateTyping) {
+              await this.session.simulateTyping(targetJid, 2500);
+            }
           }
 
           try {

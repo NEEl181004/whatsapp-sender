@@ -334,13 +334,60 @@ export class WhatsAppSession extends EventEmitter {
     }
   }
 
-  async simulateTyping(jid, durationMs = 2000) {
+  /**
+   * Human Mimic Typing Simulator
+   * Emulates real human typing patterns based on message length:
+   * - Sets online presence ('available')
+   * - Initial reading / thinking hesitation (400ms - 800ms)
+   * - Typing speed at 25ms - 40ms per character
+   * - For longer messages, introduces natural micro-stutters (pauses to think)
+   * - Concludes with a brief pause before send button tap
+   */
+  async simulateHumanTyping(jid, messageOrLength = 60) {
     if (!this.sock || this.status !== 'connected' || !jid) return;
+    const len = typeof messageOrLength === 'number' ? messageOrLength : String(messageOrLength || '').length;
+    const safeLen = Math.max(15, Math.min(len || 50, 400));
+
+    // Realistic human typing duration: 25-40ms per character + thinking hesitation
+    const charDelay = Math.floor(Math.random() * 15 + 25);
+    const baseHesitation = Math.floor(Math.random() * 400 + 400);
+    const totalTypingMs = Math.max(1800, Math.min(baseHesitation + (safeLen * charDelay), 6000));
+
     try {
-      await this.sock.sendPresenceUpdate('composing', jid);
-      await new Promise((resolve) => setTimeout(resolve, durationMs));
-      await this.sock.sendPresenceUpdate('paused', jid);
+      // 1. User appears online
+      await this.sock.sendPresenceUpdate('available').catch(() => {});
+      if (baseHesitation > 450) {
+        await new Promise((r) => setTimeout(r, baseHesitation));
+      }
+
+      if (totalTypingMs > 3000) {
+        // Longer message: simulate human stutter (types, pauses briefly to think, resumes typing)
+        const firstChunk = Math.floor(totalTypingMs * 0.55);
+        const pauseTime = Math.floor(Math.random() * 350 + 350); // 350-700ms pause
+        const secondChunk = totalTypingMs - firstChunk;
+
+        await this.sock.sendPresenceUpdate('composing', jid).catch(() => {});
+        await new Promise((r) => setTimeout(r, firstChunk));
+
+        await this.sock.sendPresenceUpdate('paused', jid).catch(() => {});
+        await new Promise((r) => setTimeout(r, pauseTime));
+
+        await this.sock.sendPresenceUpdate('composing', jid).catch(() => {});
+        await new Promise((r) => setTimeout(r, secondChunk));
+      } else {
+        // Shorter message: continuous typing
+        await this.sock.sendPresenceUpdate('composing', jid).catch(() => {});
+        await new Promise((r) => setTimeout(r, totalTypingMs));
+      }
+
+      // Finish typing before pressing send
+      await this.sock.sendPresenceUpdate('paused', jid).catch(() => {});
     } catch (_) {}
+  }
+
+  // Backwards compatibility alias
+  async simulateTyping(jid, durationMs = 2000) {
+    return await this.simulateHumanTyping(jid, Math.floor(durationMs / 30));
   }
 
   async sendTextMessage(jid, text) {
